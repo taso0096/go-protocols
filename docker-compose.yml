@@ -1,0 +1,9 @@
+version: '3'
+services:
+  echo:
+    build: ./echo
+    volumes:
+      - ./echo:/go/src/echo
+    ports:
+      - 0.0.0.0:10007:10007
+    tty: true
