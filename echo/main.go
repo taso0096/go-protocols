@@ -9,10 +9,7 @@ import (
 )
 
 func startClient(ip string, port int) {
-	client := client.Client{
-		IP:   ip,
-		Port: port,
-	}
+	client := client.Init(ip, port)
 
 	err := client.Call()
 	if err != nil {
@@ -33,10 +30,7 @@ func startClient(ip string, port int) {
 }
 
 func startServer(ip string, port int) {
-	server := server.Server{
-		IP:   ip,
-		Port: port,
-	}
+	server := server.Init(ip, port)
 
 	for {
 		err := server.Listen()
@@ -59,9 +53,9 @@ func startServer(ip string, port int) {
 }
 
 func main() {
-	ip := flag.String("ip", "0.0.0.0", "IP (default: 0.0.0.0)")
-	port := flag.Int("port", 7, "Port (default: 7)")
-	isServerMode := flag.Bool("s", false, "Start echo server (default: echo client)")
+	ip := flag.String("ip", "0.0.0.0", "IP")
+	port := flag.Int("port", 7, "Port")
+	isServerMode := flag.Bool("s", false, "Start echo server (default echo client)")
 	flag.Parse()
 
 	if *isServerMode {

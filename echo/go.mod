@@ -4,6 +4,7 @@ go 1.16
 
 replace (
 	client => ./client
+	connection => ./connection
 	server => ./server
 )
 

@@ -2,15 +2,13 @@ package server
 
 import (
 	"bufio"
+	"connection"
 	"net"
 	"strconv"
 )
 
 type Server struct {
-	IP     string
-	Port   int
-	Conn   net.Conn
-	Reader *bufio.Reader
+	connection.Connection
 }
 
 func (h *Server) Listen() error {
@@ -30,11 +28,9 @@ func (h *Server) Listen() error {
 	return nil
 }
 
-func (h *Server) Write(message string) error {
-	_, err := h.Conn.Write([]byte(message))
-	return err
-}
-
-func (h *Server) Read() (string, error) {
-	return h.Reader.ReadString('\x00')
+func Init(ip string, port int) Server {
+	client := Server{}
+	client.IP = ip
+	client.Port = port
+	return client
 }
