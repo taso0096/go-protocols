@@ -3,6 +3,8 @@ package server
 import (
 	"bufio"
 	"connection"
+	"io"
+	"log"
 	"net"
 	"strconv"
 )
@@ -29,8 +31,31 @@ func (h *Server) Listen() error {
 }
 
 func Init(ip string, port int) Server {
-	client := Server{}
-	client.IP = ip
-	client.Port = port
-	return client
+	server := Server{}
+	server.IP = ip
+	server.Port = port
+	return server
+}
+
+func Run(ip string, port int) {
+	server := Init(ip, port)
+
+	for {
+		err := server.Listen()
+		if err != nil {
+			log.Fatal("Listen Error:", err)
+		}
+		defer server.Conn.Close()
+
+		message, err := server.Read()
+		if err != nil && err != io.EOF {
+			log.Fatal("Read Error:", err)
+		}
+		log.Println(message)
+
+		err = server.Write(message)
+		if err != nil {
+			log.Fatal("Write Error:", err)
+		}
+	}
 }
