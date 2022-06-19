@@ -8,10 +8,10 @@ import (
 	"server"
 )
 
-func startClient() {
+func startClient(ip string, port int) {
 	client := client.Client{
-		IP:   "0.0.0.0",
-		Port: 10007,
+		IP:   ip,
+		Port: port,
 	}
 
 	err := client.Call()
@@ -32,10 +32,10 @@ func startClient() {
 	log.Println(message)
 }
 
-func startServer() {
+func startServer(ip string, port int) {
 	server := server.Server{
-		IP:   "0.0.0.0",
-		Port: 10007,
+		IP:   ip,
+		Port: port,
 	}
 
 	for {
@@ -59,12 +59,14 @@ func startServer() {
 }
 
 func main() {
+	ip := flag.String("ip", "0.0.0.0", "IP (default: 0.0.0.0)")
+	port := flag.Int("port", 7, "Port (default: 7)")
 	isServerMode := flag.Bool("s", false, "Start echo server (default: echo client)")
 	flag.Parse()
 
 	if *isServerMode {
-		startServer()
+		startServer(*ip, *port)
 	} else {
-		startClient()
+		startClient(*ip, *port)
 	}
 }
