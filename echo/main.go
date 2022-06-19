@@ -1,14 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"client"
 	"flag"
+	"fmt"
 	"io"
 	"log"
+	"os"
 	"server"
 )
 
-func startClient(ip string, port int) {
+func runClient(ip string, port int) {
 	client := client.Init(ip, port)
 
 	err := client.Call()
@@ -17,7 +20,11 @@ func startClient(ip string, port int) {
 	}
 	defer client.Conn.Close()
 
-	err = client.Write("Hi\x00")
+	fmt.Print("> ")
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+
+	err = client.Write(scanner.Text() + "\x00")
 	if err != nil {
 		log.Fatal("Write Error:", err)
 	}
@@ -29,7 +36,7 @@ func startClient(ip string, port int) {
 	log.Println(message)
 }
 
-func startServer(ip string, port int) {
+func runServer(ip string, port int) {
 	server := server.Init(ip, port)
 
 	for {
@@ -59,8 +66,8 @@ func main() {
 	flag.Parse()
 
 	if *isServerMode {
-		startServer(*ip, *port)
+		runServer(*ip, *port)
 	} else {
-		startClient(*ip, *port)
+		runClient(*ip, *port)
 	}
 }
