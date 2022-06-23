@@ -2,7 +2,7 @@ package client
 
 import (
 	"bufio"
-	"connection"
+	"echo/connection"
 	"fmt"
 	"log"
 	"net"

@@ -1,9 +1,9 @@
 package main
 
 import (
-	"client"
+	"echo/client"
+	"echo/server"
 	"flag"
-	"server"
 )
 
 func main() {
