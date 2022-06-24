@@ -1,14 +1,16 @@
-module main.go
+module echo
 
-go 1.16
+go 1.18
 
 replace (
-	client => ./client
-	connection => ./connection
-	server => ./server
+	echo/client => ./client
+	echo/connection => ./connection
+	echo/server => ./server
 )
 
 require (
-	client v0.0.0-00010101000000-000000000000
-	server v0.0.0-00010101000000-000000000000
+	echo/client v0.0.0-00010101000000-000000000000
+	echo/server v0.0.0-00010101000000-000000000000
 )
+
+require echo/connection v0.0.0-00010101000000-000000000000 // indirect

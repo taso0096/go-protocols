@@ -2,7 +2,7 @@ package server
 
 import (
 	"bufio"
-	"connection"
+	"echo/connection"
 	"io"
 	"log"
 	"net"

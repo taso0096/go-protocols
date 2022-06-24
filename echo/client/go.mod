@@ -1,7 +1,7 @@
-module client.go
+module echo/client
 
-go 1.16
+go 1.18
 
-replace connection => ../connection
+replace echo/connection => ../connection
 
-require connection v0.0.0-00010101000000-000000000000
+require echo/connection v0.0.0-00010101000000-000000000000
