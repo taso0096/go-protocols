@@ -7,3 +7,10 @@ services:
     ports:
       - 0.0.0.0:10007:10007
     tty: true
+  telnet:
+    build: ./telnet
+    volumes:
+      - ./telnet:/go/src/telnet
+    ports:
+      - 0.0.0.0:10023:10023
+    tty: true
