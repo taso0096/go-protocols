@@ -2,6 +2,7 @@ package connection
 
 import (
 	"bufio"
+	"bytes"
 	"net"
 )
 
@@ -18,5 +19,18 @@ func (c *Connection) Write(message string) error {
 }
 
 func (c *Connection) Read() (string, error) {
-	return c.Reader.ReadString('\x00')
+	var p [1]byte
+	var buffer bytes.Buffer
+
+	for {
+		n, err := c.Reader.Read(p[:])
+		if n > 0 {
+			buffer.Write(p[:n])
+		}
+		if p[0] == byte(0) || err != nil {
+			break
+		}
+	}
+
+	return buffer.ReadString('\x00')
 }
