@@ -13,8 +13,8 @@ type Server struct {
 	connection.Connection
 }
 
-func (h *Server) Listen() error {
-	ln, err := net.Listen("tcp", h.IP+":"+strconv.Itoa(h.Port))
+func (s *Server) Listen() error {
+	ln, err := net.Listen("tcp", s.IP+":"+strconv.Itoa(s.Port))
 	if err != nil {
 		return err
 	}
@@ -25,8 +25,8 @@ func (h *Server) Listen() error {
 		return err
 	}
 
-	h.Conn = conn
-	h.Reader = bufio.NewReader(conn)
+	s.Conn = conn
+	s.Reader = bufio.NewReader(conn)
 	return nil
 }
 
