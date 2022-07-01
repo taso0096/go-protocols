@@ -18,5 +18,8 @@ func (c *Connection) Write(message string) error {
 }
 
 func (c *Connection) Read() (string, error) {
-	return c.Reader.ReadString('\x00')
+	p := make([]byte, c.Reader.Size())
+	n, err := c.Reader.Read(p)
+
+	return string(p[:n]), err
 }
