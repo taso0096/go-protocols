@@ -2,6 +2,18 @@ module telnet/client
 
 go 1.18
 
-replace telnet/connection => ../connection
+replace (
+	telnet/command => ../command
+	telnet/connection => ../connection
+)
 
-require telnet/connection v0.0.0-00010101000000-000000000000
+require (
+	github.com/mattn/go-tty v0.0.4
+	telnet/command v0.0.0-00010101000000-000000000000
+	telnet/connection v0.0.0-00010101000000-000000000000
+)
+
+require (
+	github.com/mattn/go-isatty v0.0.10 // indirect
+	golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1 // indirect
+)

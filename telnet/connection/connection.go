@@ -12,14 +12,25 @@ type Connection struct {
 	Reader *bufio.Reader
 }
 
-func (c *Connection) Write(message string) error {
-	_, err := c.Conn.Write([]byte(message))
+func (c *Connection) Write(message []byte) error {
+	_, err := c.Conn.Write(message)
 	return err
 }
 
-func (c *Connection) Read() (string, error) {
-	p := make([]byte, c.Reader.Size())
-	n, err := c.Reader.Read(p)
+func (c *Connection) ReadByte() (byte, error) {
+	return c.Reader.ReadByte()
+}
 
-	return string(p[:n]), err
+func (c *Connection) ReadAll() ([]byte, error) {
+	message := make([]byte, c.Reader.Size())
+	n, err := c.Reader.Read(message)
+
+	return message[:n], err
+}
+
+func (c *Connection) Read(length int) ([]byte, error) {
+	message := make([]byte, length)
+	n, err := c.Reader.Read(message)
+
+	return message[:n], err
 }
