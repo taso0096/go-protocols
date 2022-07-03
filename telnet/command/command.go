@@ -1,0 +1,20 @@
+package command
+
+const (
+	SE int = 240 + iota
+	NOP
+	DATA_MARK
+	BREAK
+	INTERRUPT_PROCESS
+	ABORT_OUTPUT
+	ARE_YOU_THERE
+	ERASE_CHARACTER
+	ERASE_LINE
+	GO_AHEAD
+	SB
+	WILL
+	WONT
+	DO
+	DONT
+	IAC
+)
