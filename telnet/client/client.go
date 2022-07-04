@@ -2,21 +2,26 @@ package client
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
 	"strconv"
+	"syscall"
 	cmd "telnet/command"
 	"telnet/connection"
 
 	"github.com/mattn/go-tty"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 type Client struct {
 	connection.Connection
-	CmdFlag bool
-	Cmd     byte
-	SubCmd  byte
+	CmdFlag       bool
+	Cmd           byte
+	SubCmd        byte
+	EnableOptions map[byte]bool
 }
 
 func (c *Client) Call() error {
@@ -36,18 +41,29 @@ func (c *Client) ExecCmd() error {
 	var err error
 	switch c.Cmd {
 	case cmd.DO:
-		switch c.SubCmd {
-		case cmd.OPTION_ECHO:
+		if IsSupportOption(c.SubCmd) {
 			err = c.Write([]byte{cmd.IAC, cmd.WILL, c.SubCmd})
-		default:
+			c.EnableOptions[c.SubCmd] = true
+			switch c.SubCmd {
+			case OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE:
+				width, hight, _ := terminal.GetSize(syscall.Stdin)
+				optionDetail := []byte{cmd.IAC, cmd.SB, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE}
+				bufWindowSize := new(bytes.Buffer)
+				binary.Write(bufWindowSize, binary.BigEndian, int16(width))
+				binary.Write(bufWindowSize, binary.BigEndian, int16(hight))
+				err = c.Write(append(optionDetail, bufWindowSize.Bytes()...))
+			}
+		} else {
 			err = c.Write([]byte{cmd.IAC, cmd.WONT, c.SubCmd})
+			c.EnableOptions[c.SubCmd] = false
 		}
 	case cmd.WILL:
-		switch c.SubCmd {
-		case cmd.OPTION_ECHO:
+		if IsSupportOption(c.SubCmd) {
 			err = c.Write([]byte{cmd.IAC, cmd.DO, c.SubCmd})
-		default:
+			c.EnableOptions[c.SubCmd] = true
+		} else {
 			err = c.Write([]byte{cmd.IAC, cmd.DONT, c.SubCmd})
+			c.EnableOptions[c.SubCmd] = false
 		}
 	}
 	return err
@@ -105,6 +121,7 @@ func Init(ip string, port int) Client {
 	c := Client{}
 	c.IP = ip
 	c.Port = port
+	c.EnableOptions = map[byte]bool{}
 	c.InitCmd()
 	return c
 }
