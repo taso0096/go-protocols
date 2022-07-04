@@ -53,6 +53,38 @@ func (c *Client) ExecCmd() error {
 	return err
 }
 
+func (c *Client) Read() ([]byte, error) {
+	byteMessage, err := c.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	startIndex := 0
+	for i, b := range append(byteMessage, 0) {
+		if b == cmd.IAC {
+			c.CmdFlag = true
+			continue
+		} else if c.CmdFlag {
+			if c.Cmd == 0 {
+				c.Cmd = b
+				if !cmd.IsNeedOption(b) {
+					c.ExecCmd()
+					c.InitCmd()
+				}
+				continue
+			}
+			c.SubCmd = b
+			c.ExecCmd()
+			c.InitCmd()
+			continue
+		} else if i == len(byteMessage) {
+			return nil, nil
+		}
+		startIndex = i
+		break
+	}
+	return byteMessage[startIndex:], err
+}
+
 func (c *Client) ScanAndWrite(tty *tty.TTY) error {
 	for {
 		r, err := tty.ReadRune()
@@ -95,33 +127,14 @@ func Run(ip string, port int) {
 	fmt.Printf("Connected to %s:%d.\n", ip, port)
 
 	for {
-		b, err := c.ReadByte()
+		byteMessage, err := c.Read()
 		if err != nil {
 			log.Fatal("Read Error:", err)
 		}
-		if b == cmd.IAC {
-			c.CmdFlag = true
-			continue
-		} else if c.CmdFlag {
-			if c.Cmd == 0 {
-				c.Cmd = b
-				if !cmd.IsNeedOption(b) {
-					c.ExecCmd()
-					c.InitCmd()
-				}
-				continue
-			}
-			c.SubCmd = b
-			c.ExecCmd()
-			c.InitCmd()
+		if byteMessage == nil {
 			continue
 		}
-		byteMessage, err := c.ReadAll()
-		if err != nil {
-			log.Fatal("Read Error:", err)
-		}
-		message := string(append([]byte{b}, byteMessage...))
-		fmt.Print(message)
+		fmt.Print(string(byteMessage))
 		go c.ScanAndWrite(tty)
 	}
 }
