@@ -40,6 +40,17 @@ func (c *Client) InitCmd() {
 func (c *Client) ExecCmd() error {
 	var err error
 	switch c.Cmd {
+	case cmd.WILL:
+		if IsSupportOption(c.SubCmd) {
+			err = c.Write([]byte{cmd.IAC, cmd.DO, c.SubCmd})
+			c.EnableOptions[c.SubCmd] = true
+		} else {
+			err = c.Write([]byte{cmd.IAC, cmd.DONT, c.SubCmd})
+			c.EnableOptions[c.SubCmd] = false
+		}
+	case cmd.WONT:
+		err = c.Write([]byte{cmd.IAC, cmd.WONT, c.SubCmd})
+		c.EnableOptions[c.SubCmd] = false
 	case cmd.DO:
 		if IsSupportOption(c.SubCmd) {
 			err = c.Write([]byte{cmd.IAC, cmd.WILL, c.SubCmd})
@@ -57,14 +68,9 @@ func (c *Client) ExecCmd() error {
 			err = c.Write([]byte{cmd.IAC, cmd.WONT, c.SubCmd})
 			c.EnableOptions[c.SubCmd] = false
 		}
-	case cmd.WILL:
-		if IsSupportOption(c.SubCmd) {
-			err = c.Write([]byte{cmd.IAC, cmd.DO, c.SubCmd})
-			c.EnableOptions[c.SubCmd] = true
-		} else {
-			err = c.Write([]byte{cmd.IAC, cmd.DONT, c.SubCmd})
-			c.EnableOptions[c.SubCmd] = false
-		}
+	case cmd.DONT:
+		err = c.Write([]byte{cmd.IAC, cmd.DONT, c.SubCmd})
+		c.EnableOptions[c.SubCmd] = false
 	}
 	return err
 }
