@@ -22,6 +22,7 @@ type Client struct {
 	Cmd           byte
 	SubCmd        byte
 	EnableOptions map[byte]bool
+	InputLength   int
 }
 
 func (c *Client) Call() error {
@@ -108,13 +109,25 @@ func (c *Client) Read() ([]byte, error) {
 }
 
 func (c *Client) ScanAndWrite(tty *tty.TTY) error {
+	c.InputLength = 0
 	for {
 		r, err := tty.ReadRune()
 		if err != nil {
 			return err
 		}
-		if r == '\n' {
-			return c.Write([]byte("\r\n"))
+		if !c.EnableOptions[OPTION_ECHO] {
+			switch r {
+			case '\r':
+				fmt.Print("\n")
+			case '\177':
+				if c.InputLength > 0 {
+					fmt.Print("\b \b")
+					c.InputLength--
+				}
+			default:
+				fmt.Print(string(r))
+				c.InputLength++
+			}
 		}
 		err = c.Write([]byte{byte(r)})
 		if err != nil {
@@ -128,6 +141,7 @@ func Init(ip string, port int) Client {
 	c.IP = ip
 	c.Port = port
 	c.EnableOptions = map[byte]bool{}
+	c.InputLength = 0
 	c.InitCmd()
 	return c
 }
