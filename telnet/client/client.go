@@ -41,7 +41,22 @@ func (c *Client) InitCmd() {
 	c.SubCmd = 0
 }
 
-func (c *Client) ExecCmd() error {
+func (c *Client) ReqCmds(subCmds []byte) error {
+	cmdsBuffer := bytes.NewBuffer([]byte{})
+	for _, subCmd := range subCmds {
+		cmdsBuffer.Write([]byte{cmd.IAC, cmd.WILL, subCmd})
+	}
+	err := c.Write(cmdsBuffer.Bytes())
+	if err != nil {
+		return err
+	}
+	for _, subCmd := range subCmds {
+		c.EnableOptions[subCmd] = true
+	}
+	return nil
+}
+
+func (c *Client) ResCmd() error {
 	var err error
 	switch c.Cmd {
 	case cmd.WILL:
@@ -57,8 +72,10 @@ func (c *Client) ExecCmd() error {
 		c.EnableOptions[c.SubCmd] = false
 	case cmd.DO:
 		if IsSupportOption(c.SubCmd) {
-			err = c.Write([]byte{cmd.IAC, cmd.WILL, c.SubCmd})
-			c.EnableOptions[c.SubCmd] = true
+			if !c.EnableOptions[c.SubCmd] {
+				err = c.Write([]byte{cmd.IAC, cmd.WILL, c.SubCmd})
+				c.EnableOptions[c.SubCmd] = true
+			}
 			switch c.SubCmd {
 			case OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE:
 				width, hight, _ := terminal.GetSize(syscall.Stdin)
@@ -93,13 +110,13 @@ func (c *Client) Read() ([]byte, error) {
 			if c.Cmd == 0 {
 				c.Cmd = b
 				if !cmd.IsNeedOption(b) {
-					c.ExecCmd()
+					c.ResCmd()
 					c.InitCmd()
 				}
 				continue
 			}
 			c.SubCmd = b
-			c.ExecCmd()
+			c.ResCmd()
 			c.InitCmd()
 			continue
 		} else if i == len(byteMessage) {
@@ -121,6 +138,7 @@ func (c *Client) ScanAndWrite(tty *tty.TTY) error {
 		if !c.EnableOptions[OPTION_ECHO] {
 			switch r {
 			case '\r':
+				c.InputLength = 0
 				fmt.Print("\n")
 			case '\177':
 				if c.InputLength > 0 {
@@ -152,7 +170,7 @@ func Init(ip string, port int) Client {
 func Run(ip string, port int) {
 	tty, err := tty.Open()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Open Error:", err)
 	}
 	defer tty.Close()
 
@@ -166,6 +184,11 @@ func Run(ip string, port int) {
 	defer c.Conn.Close()
 	fmt.Printf("Connected to %s:%d.\n", ip, port)
 
+	err = c.ReqCmds([]byte{OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE})
+	if err != nil {
+		log.Fatal("Write Error:", err)
+	}
+
 	quit := make(chan os.Signal)
 	signal.Notify(quit, os.Interrupt)
 	go func() {
@@ -178,6 +201,8 @@ func Run(ip string, port int) {
 		}
 	}()
 
+	go c.ScanAndWrite(tty)
+
 	for {
 		byteMessage, err := c.Read()
 		if err == io.EOF {
@@ -186,10 +211,8 @@ func Run(ip string, port int) {
 		} else if err != nil {
 			log.Fatal("Read Error:", err)
 		}
-		if byteMessage == nil {
-			continue
+		if byteMessage != nil {
+			fmt.Print(string(byteMessage))
 		}
-		fmt.Print(string(byteMessage))
-		go c.ScanAndWrite(tty)
 	}
 }
