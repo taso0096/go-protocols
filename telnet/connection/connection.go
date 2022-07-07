@@ -17,6 +17,11 @@ func (c *Connection) Write(message []byte) error {
 	return err
 }
 
+func (c *Connection) WriteByte(message byte) error {
+	_, err := c.Conn.Write([]byte{message})
+	return err
+}
+
 func (c *Connection) ReadByte() (byte, error) {
 	return c.Reader.ReadByte()
 }

@@ -5,8 +5,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"os"
+	"os/signal"
 	"strconv"
 	"syscall"
 	cmd "telnet/command"
@@ -129,7 +132,7 @@ func (c *Client) ScanAndWrite(tty *tty.TTY) error {
 				c.InputLength++
 			}
 		}
-		err = c.Write([]byte{byte(r)})
+		err = c.WriteByte(byte(r))
 		if err != nil {
 			return err
 		}
@@ -163,9 +166,24 @@ func Run(ip string, port int) {
 	defer c.Conn.Close()
 	fmt.Printf("Connected to %s:%d.\n", ip, port)
 
+	quit := make(chan os.Signal)
+	signal.Notify(quit, os.Interrupt)
+	go func() {
+		for {
+			<-quit
+			err = c.WriteByte(3)
+			if err != nil {
+				log.Fatal("Write Error:", err)
+			}
+		}
+	}()
+
 	for {
 		byteMessage, err := c.Read()
-		if err != nil {
+		if err == io.EOF {
+			fmt.Println("Connection closed by foreign host.")
+			os.Exit(0)
+		} else if err != nil {
 			log.Fatal("Read Error:", err)
 		}
 		if byteMessage == nil {
