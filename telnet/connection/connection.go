@@ -6,19 +6,22 @@ import (
 )
 
 type Connection struct {
+	// TCP Config
 	IP     string
 	Port   int
 	Conn   net.Conn
 	Reader *bufio.Reader
-}
-
-func (c *Connection) Write(message []byte) error {
-	_, err := c.Conn.Write(message)
-	return err
+	// TELNET Config
+	SupportOptions []byte
 }
 
 func (c *Connection) WriteByte(message byte) error {
 	_, err := c.Conn.Write([]byte{message})
+	return err
+}
+
+func (c *Connection) WriteBytes(message []byte) error {
+	_, err := c.Conn.Write(message)
 	return err
 }
 
@@ -38,4 +41,13 @@ func (c *Connection) ReadAll() ([]byte, error) {
 	n, err := c.Reader.Read(message)
 
 	return message[:n], err
+}
+
+func (c *Connection) IsSupportOption(option byte) bool {
+	for _, v := range c.SupportOptions {
+		if option == v {
+			return true
+		}
+	}
+	return false
 }

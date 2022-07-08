@@ -46,7 +46,7 @@ func (c *Client) ReqCmds(subCmds []byte) error {
 	for _, subCmd := range subCmds {
 		cmdsBuffer.Write([]byte{cmd.IAC, cmd.WILL, subCmd})
 	}
-	err := c.Write(cmdsBuffer.Bytes())
+	err := c.WriteBytes(cmdsBuffer.Bytes())
 	if err != nil {
 		return err
 	}
@@ -60,20 +60,20 @@ func (c *Client) ResCmd() error {
 	var err error
 	switch c.Cmd {
 	case cmd.WILL:
-		if IsSupportOption(c.SubCmd) {
-			err = c.Write([]byte{cmd.IAC, cmd.DO, c.SubCmd})
+		if c.IsSupportOption(c.SubCmd) {
+			err = c.WriteBytes([]byte{cmd.IAC, cmd.DO, c.SubCmd})
 			c.EnableOptions[c.SubCmd] = true
 		} else {
-			err = c.Write([]byte{cmd.IAC, cmd.DONT, c.SubCmd})
+			err = c.WriteBytes([]byte{cmd.IAC, cmd.DONT, c.SubCmd})
 			c.EnableOptions[c.SubCmd] = false
 		}
 	case cmd.WONT:
-		err = c.Write([]byte{cmd.IAC, cmd.WONT, c.SubCmd})
+		err = c.WriteBytes([]byte{cmd.IAC, cmd.WONT, c.SubCmd})
 		c.EnableOptions[c.SubCmd] = false
 	case cmd.DO:
-		if IsSupportOption(c.SubCmd) {
+		if c.IsSupportOption(c.SubCmd) {
 			if !c.EnableOptions[c.SubCmd] {
-				err = c.Write([]byte{cmd.IAC, cmd.WILL, c.SubCmd})
+				err = c.WriteBytes([]byte{cmd.IAC, cmd.WILL, c.SubCmd})
 				c.EnableOptions[c.SubCmd] = true
 			}
 			switch c.SubCmd {
@@ -83,14 +83,14 @@ func (c *Client) ResCmd() error {
 				bufWindowSize := new(bytes.Buffer)
 				binary.Write(bufWindowSize, binary.BigEndian, int16(width))
 				binary.Write(bufWindowSize, binary.BigEndian, int16(hight))
-				err = c.Write(append(optionDetail, bufWindowSize.Bytes()...))
+				err = c.WriteBytes(append(optionDetail, bufWindowSize.Bytes()...))
 			}
 		} else {
-			err = c.Write([]byte{cmd.IAC, cmd.WONT, c.SubCmd})
+			err = c.WriteBytes([]byte{cmd.IAC, cmd.WONT, c.SubCmd})
 			c.EnableOptions[c.SubCmd] = false
 		}
 	case cmd.DONT:
-		err = c.Write([]byte{cmd.IAC, cmd.DONT, c.SubCmd})
+		err = c.WriteBytes([]byte{cmd.IAC, cmd.DONT, c.SubCmd})
 		c.EnableOptions[c.SubCmd] = false
 	}
 	return err
@@ -157,12 +157,25 @@ func (c *Client) ScanAndWrite(tty *tty.TTY) error {
 	}
 }
 
-func Init(ip string, port int) Client {
+func (c *Client) CatchSignal() {
+	quit := make(chan os.Signal)
+	signal.Notify(quit, os.Interrupt)
+	for {
+		<-quit
+		err := c.WriteByte(3)
+		if err != nil {
+			log.Fatal("Write Error:", err)
+		}
+	}
+}
+
+func Init(ip string, port int, supportOptions []byte) Client {
 	c := Client{}
 	c.IP = ip
 	c.Port = port
 	c.EnableOptions = map[byte]bool{}
 	c.InputLength = 0
+	c.SupportOptions = supportOptions
 	c.InitCmd()
 	return c
 }
@@ -174,8 +187,11 @@ func Run(ip string, port int) {
 	}
 	defer tty.Close()
 
-	c := Init(ip, port)
+	// Init TELNET Client
+	supportOptions := []byte{OPTION_ECHO, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE}
+	c := Init(ip, port, supportOptions)
 
+	// TCP Call
 	fmt.Printf("Trying %s:%d...\n", ip, port)
 	err = c.Call()
 	if err != nil {
@@ -184,25 +200,18 @@ func Run(ip string, port int) {
 	defer c.Conn.Close()
 	fmt.Printf("Connected to %s:%d.\n", ip, port)
 
-	err = c.ReqCmds([]byte{OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE})
+	// Request TELNET Commands
+	err = c.ReqCmds(supportOptions)
 	if err != nil {
 		log.Fatal("Write Error:", err)
 	}
 
-	quit := make(chan os.Signal)
-	signal.Notify(quit, os.Interrupt)
-	go func() {
-		for {
-			<-quit
-			err = c.WriteByte(3)
-			if err != nil {
-				log.Fatal("Write Error:", err)
-			}
-		}
-	}()
-
+	// Catch interrupt signal
+	go c.CatchSignal()
+	// Scan key input and write message
 	go c.ScanAndWrite(tty)
 
+	// Read server message
 	for {
 		byteMessage, err := c.Read()
 		if err == io.EOF {

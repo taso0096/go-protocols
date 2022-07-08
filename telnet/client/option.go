@@ -8,12 +8,3 @@ const (
 	OPTION_X_DISPLAY_LOCATION          byte = 35
 	OPTION_NEW_ENVIRONMENT_OPTION      byte = 39
 )
-
-func IsSupportOption(option byte) bool {
-	for _, v := range []byte{OPTION_ECHO, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE} {
-		if option == v {
-			return true
-		}
-	}
-	return false
-}
