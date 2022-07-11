@@ -21,9 +21,6 @@ import (
 
 type Client struct {
 	connection.Connection
-	CmdFlag       bool
-	Cmd           byte
-	SubCmd        byte
 	EnableOptions map[byte]bool
 	InputLength   int
 }
@@ -33,12 +30,6 @@ func (c *Client) Call() error {
 	c.Conn = conn
 	c.Reader = bufio.NewReader(conn)
 	return err
-}
-
-func (c *Client) InitCmd() {
-	c.CmdFlag = false
-	c.Cmd = 0
-	c.SubCmd = 0
 }
 
 func (c *Client) ReqCmds(subCmds []byte) error {
@@ -56,27 +47,27 @@ func (c *Client) ReqCmds(subCmds []byte) error {
 	return nil
 }
 
-func (c *Client) ResCmd() error {
+func (c *Client) ResCmd(mainCmd byte, subCmd byte) error {
 	var err error
-	switch c.Cmd {
+	switch mainCmd {
 	case cmd.WILL:
-		if c.IsSupportOption(c.SubCmd) {
-			err = c.WriteBytes([]byte{cmd.IAC, cmd.DO, c.SubCmd})
-			c.EnableOptions[c.SubCmd] = true
+		if c.IsSupportOption(subCmd) {
+			err = c.WriteBytes([]byte{cmd.IAC, cmd.DO, subCmd})
+			c.EnableOptions[subCmd] = true
 		} else {
-			err = c.WriteBytes([]byte{cmd.IAC, cmd.DONT, c.SubCmd})
-			c.EnableOptions[c.SubCmd] = false
+			err = c.WriteBytes([]byte{cmd.IAC, cmd.DONT, subCmd})
+			c.EnableOptions[subCmd] = false
 		}
 	case cmd.WONT:
-		err = c.WriteBytes([]byte{cmd.IAC, cmd.WONT, c.SubCmd})
-		c.EnableOptions[c.SubCmd] = false
+		err = c.WriteBytes([]byte{cmd.IAC, cmd.WONT, subCmd})
+		c.EnableOptions[subCmd] = false
 	case cmd.DO:
-		if c.IsSupportOption(c.SubCmd) {
-			if !c.EnableOptions[c.SubCmd] {
-				err = c.WriteBytes([]byte{cmd.IAC, cmd.WILL, c.SubCmd})
-				c.EnableOptions[c.SubCmd] = true
+		if c.IsSupportOption(subCmd) {
+			if !c.EnableOptions[subCmd] {
+				err = c.WriteBytes([]byte{cmd.IAC, cmd.WILL, subCmd})
+				c.EnableOptions[subCmd] = true
 			}
-			switch c.SubCmd {
+			switch subCmd {
 			case OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE:
 				width, hight, _ := terminal.GetSize(syscall.Stdin)
 				optionDetail := []byte{cmd.IAC, cmd.SB, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE}
@@ -86,38 +77,46 @@ func (c *Client) ResCmd() error {
 				err = c.WriteBytes(append(optionDetail, bufWindowSize.Bytes()...))
 			}
 		} else {
-			err = c.WriteBytes([]byte{cmd.IAC, cmd.WONT, c.SubCmd})
-			c.EnableOptions[c.SubCmd] = false
+			err = c.WriteBytes([]byte{cmd.IAC, cmd.WONT, subCmd})
+			c.EnableOptions[subCmd] = false
 		}
 	case cmd.DONT:
-		err = c.WriteBytes([]byte{cmd.IAC, cmd.DONT, c.SubCmd})
-		c.EnableOptions[c.SubCmd] = false
+		err = c.WriteBytes([]byte{cmd.IAC, cmd.DONT, subCmd})
+		c.EnableOptions[subCmd] = false
 	}
 	return err
 }
 
 func (c *Client) Read() ([]byte, error) {
+	cmdFlag := false
+	var mainCmd byte = 0
 	byteMessage, err := c.ReadAll()
 	if err != nil {
 		return nil, err
 	}
 	startIndex := 0
 	for i, b := range append(byteMessage, 0) {
-		if b == cmd.IAC {
-			c.CmdFlag = true
-			continue
-		} else if c.CmdFlag {
-			if c.Cmd == 0 {
-				c.Cmd = b
+		if cmdFlag {
+			if mainCmd == 0 {
 				if !cmd.IsNeedOption(b) {
-					c.ResCmd()
-					c.InitCmd()
+					err := c.ResCmd(b, 0)
+					if err != nil {
+						return nil, err
+					}
+					cmdFlag = false
 				}
+				mainCmd = b
 				continue
 			}
-			c.SubCmd = b
-			c.ResCmd()
-			c.InitCmd()
+			err := c.ResCmd(mainCmd, b)
+			if err != nil {
+				return nil, err
+			}
+			cmdFlag = false
+			continue
+		} else if b == cmd.IAC {
+			cmdFlag = true
+			mainCmd = 0
 			continue
 		} else if i == len(byteMessage) {
 			return nil, nil
@@ -176,7 +175,6 @@ func Init(ip string, port int, supportOptions []byte) Client {
 	c.EnableOptions = map[byte]bool{}
 	c.InputLength = 0
 	c.SupportOptions = supportOptions
-	c.InitCmd()
 	return c
 }
 
