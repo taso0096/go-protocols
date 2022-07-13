@@ -21,8 +21,7 @@ import (
 
 type Client struct {
 	connection.Connection
-	EnableOptions map[byte]bool
-	InputLength   int
+	InputLength int
 }
 
 func (c *Client) Call() error {
@@ -30,21 +29,6 @@ func (c *Client) Call() error {
 	c.Conn = conn
 	c.Reader = bufio.NewReader(conn)
 	return err
-}
-
-func (c *Client) ReqCmds(subCmds []byte) error {
-	cmdsBuffer := bytes.NewBuffer([]byte{})
-	for _, subCmd := range subCmds {
-		cmdsBuffer.Write([]byte{cmd.IAC, cmd.WILL, subCmd})
-	}
-	err := c.WriteBytes(cmdsBuffer.Bytes())
-	if err != nil {
-		return err
-	}
-	for _, subCmd := range subCmds {
-		c.EnableOptions[subCmd] = true
-	}
-	return nil
 }
 
 func (c *Client) ResCmd(mainCmd byte, subCmd byte) error {
@@ -88,40 +72,29 @@ func (c *Client) ResCmd(mainCmd byte, subCmd byte) error {
 }
 
 func (c *Client) Read() ([]byte, error) {
-	cmdFlag := false
-	var mainCmd byte = 0
 	byteMessage, err := c.ReadAll()
 	if err != nil {
 		return nil, err
 	}
-	startIndex := 0
-	for i, b := range append(byteMessage, 0) {
-		if cmdFlag {
-			if mainCmd == 0 {
-				if !cmd.IsNeedOption(b) {
-					err := c.ResCmd(b, 0)
-					if err != nil {
-						return nil, err
-					}
-					cmdFlag = false
-				}
-				mainCmd = b
-				continue
+	startIndex := -1
+	for startIndex < len(byteMessage)-1 {
+		startIndex++
+		b := byteMessage[startIndex]
+		if b == cmd.IAC {
+			startIndex++
+			mainCmd := byteMessage[startIndex]
+			if !cmd.IsNeedOption(mainCmd) {
+				err = c.ResCmd(mainCmd, 0)
+			} else {
+				startIndex++
+				subCmd := byteMessage[startIndex]
+				err = c.ResCmd(mainCmd, subCmd)
 			}
-			err := c.ResCmd(mainCmd, b)
 			if err != nil {
 				return nil, err
 			}
-			cmdFlag = false
 			continue
-		} else if b == cmd.IAC {
-			cmdFlag = true
-			mainCmd = 0
-			continue
-		} else if i == len(byteMessage) {
-			return nil, nil
 		}
-		startIndex = i
 		break
 	}
 	return byteMessage[startIndex:], err

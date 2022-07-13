@@ -1,7 +1,7 @@
 package command
 
 const (
-	SE byte = 240 + iota
+	SE byte = 240 + iota //	End of subnegotiation parameters.
 	NOP
 	DATA_MARK
 	BREAK
@@ -11,7 +11,7 @@ const (
 	ERASE_CHARACTER
 	ERASE_LINE
 	GO_AHEAD
-	SB
+	SB // Indicates that what follows is subnegotiation of the indicated option.
 
 	WILL
 	WONT
