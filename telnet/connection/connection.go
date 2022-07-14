@@ -16,8 +16,8 @@ type Connection struct {
 	// TELNET Config
 	SupportOptions []byte
 	EnableOptions  map[byte]bool
-	// Build TELNET Commands Response Function
-	BuildCmdsRes func(c Connection, mainCmd byte, subCmd byte, options ...byte) ([]byte, error)
+	// Build TELNET Command Response Function
+	BuildCmdRes func(c Connection, mainCmd byte, subCmd byte, options ...byte) ([]byte, error)
 }
 
 func (c *Connection) WriteByte(message byte) error {
@@ -32,7 +32,7 @@ func (c *Connection) WriteBytes(message []byte) error {
 
 func (c *Connection) ReadMessage() ([]byte, error) {
 	var err error
-	var byteResCmd []byte
+	var byteCmdRes []byte
 	byteMessage, err := c.ReadAll()
 	if err != nil {
 		return nil, err
@@ -56,8 +56,8 @@ func (c *Connection) ReadMessage() ([]byte, error) {
 				i += 2
 				continue
 			case cmd.SE:
-				byteResCmd, err = c.BuildCmdsRes(*c, cmd.SB, subCmd, byteMessage[optionStartIndex:i-1]...)
-				_, err = bufCmdsRes.Write(byteResCmd)
+				byteCmdRes, err = c.BuildCmdRes(*c, cmd.SB, subCmd, byteMessage[optionStartIndex:i-1]...)
+				_, err = bufCmdsRes.Write(byteCmdRes)
 				if err != nil {
 					return nil, err
 				}
@@ -65,13 +65,13 @@ func (c *Connection) ReadMessage() ([]byte, error) {
 			}
 			// commands
 			if !cmd.IsNeedOption(mainCmd) {
-				byteResCmd, err = c.BuildCmdsRes(*c, mainCmd, 0)
-				_, err = bufCmdsRes.Write(byteResCmd)
+				byteCmdRes, err = c.BuildCmdRes(*c, mainCmd, 0)
+				_, err = bufCmdsRes.Write(byteCmdRes)
 			} else {
 				i++
 				subCmd = byteMessage[i]
-				byteResCmd, err = c.BuildCmdsRes(*c, mainCmd, subCmd)
-				_, err = bufCmdsRes.Write(byteResCmd)
+				byteCmdRes, err = c.BuildCmdRes(*c, mainCmd, subCmd)
+				_, err = bufCmdsRes.Write(byteCmdRes)
 			}
 			if err != nil {
 				return nil, err

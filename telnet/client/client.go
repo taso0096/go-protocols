@@ -61,11 +61,20 @@ func (c *Client) ScanAndWrite(tty *tty.TTY) error {
 }
 
 func (c *Client) CatchSignal() {
-	quit := make(chan os.Signal)
-	signal.Notify(quit, os.Interrupt)
+	var err error
+	signalChan := make(chan os.Signal)
+	signal.Notify(signalChan, os.Interrupt, syscall.SIGWINCH)
 	for {
-		<-quit
-		err := c.WriteByte(3)
+		switch <-signalChan {
+		case os.Interrupt:
+			err = c.WriteByte(3)
+		case syscall.SIGWINCH:
+			byteNAWSReq, err := BuildCmdRes(c.Connection, cmd.DO, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE)
+			if err != nil {
+				log.Fatal("BuildCmdRes Error:", err)
+			}
+			err = c.WriteBytes(byteNAWSReq)
+		}
 		if err != nil {
 			log.Fatal("Write Error:", err)
 		}
@@ -78,7 +87,7 @@ func Init(ip string, port int, supportOptions []byte) Client {
 	c.Port = port
 	c.EnableOptions = map[byte]bool{}
 	c.SupportOptions = supportOptions
-	c.BuildCmdsRes = BuildCmdsRes
+	c.BuildCmdRes = BuildCmdRes
 	c.InputLength = 0
 	return c
 }
@@ -109,7 +118,7 @@ func Run(ip string, port int) {
 		log.Fatal("Write Error:", err)
 	}
 
-	// Catch interrupt signal
+	// Catch signal
 	go c.CatchSignal()
 	// Scan key input and write message
 	go c.ScanAndWrite(tty)
@@ -129,7 +138,7 @@ func Run(ip string, port int) {
 	}
 }
 
-func BuildCmdsRes(c connection.Connection, mainCmd byte, subCmd byte, options ...byte) ([]byte, error) {
+func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...byte) ([]byte, error) {
 	bufCmdsRes := new(bytes.Buffer)
 	var err error
 	switch mainCmd {
