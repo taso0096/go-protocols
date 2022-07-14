@@ -31,12 +31,13 @@ func (c *Client) Call() error {
 	return err
 }
 
-func (c *Client) ResCmd(mainCmd byte, subCmd byte, options ...byte) error {
+func (c *Client) BuildCmdsRes(mainCmd byte, subCmd byte, options ...byte) ([]byte, error) {
+	bufCmdsRes := new(bytes.Buffer)
 	var err error
 	switch mainCmd {
 	case cmd.SB:
 		if !c.IsSupportOption(subCmd) {
-			err = c.WriteBytes([]byte{cmd.IAC, cmd.DONT, subCmd})
+			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.DONT, subCmd})
 			c.EnableOptions[subCmd] = false
 			break
 		}
@@ -45,54 +46,55 @@ func (c *Client) ResCmd(mainCmd byte, subCmd byte, options ...byte) error {
 		if options[0] != SEND {
 			break
 		}
-		optionResBuffer := bytes.NewBuffer([]byte{cmd.IAC, cmd.SB, subCmd, IS})
+		bufOptionRes := bytes.NewBuffer([]byte{cmd.IAC, cmd.SB, subCmd, IS})
 		switch subCmd {
 		case OPTION_TERMINAL_SPEED:
-			optionResBuffer.Write([]byte("38400,38400"))
-			err = c.WriteBytes(optionResBuffer.Bytes())
+			bufOptionRes.Write([]byte("38400,38400"))
+			_, err = bufCmdsRes.Write(bufOptionRes.Bytes())
 		case OPTION_TERMINAL_TYPE:
-			optionResBuffer.Write([]byte("XTERM-256COLOR"))
-			err = c.WriteBytes(optionResBuffer.Bytes())
+			bufOptionRes.Write([]byte("XTERM-256COLOR"))
+			_, err = bufCmdsRes.Write(bufOptionRes.Bytes())
 		}
-		err = c.WriteBytes([]byte{cmd.IAC, cmd.SE})
+		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SE})
 	case cmd.WILL:
-		if c.IsSupportOption(subCmd) {
-			err = c.WriteBytes([]byte{cmd.IAC, cmd.DO, subCmd})
-			c.EnableOptions[subCmd] = true
-		} else {
-			err = c.WriteBytes([]byte{cmd.IAC, cmd.DONT, subCmd})
+		if !c.IsSupportOption(subCmd) {
+			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.DONT, subCmd})
 			c.EnableOptions[subCmd] = false
+			break
 		}
+		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.DO, subCmd})
+		c.EnableOptions[subCmd] = true
 	case cmd.WONT:
-		err = c.WriteBytes([]byte{cmd.IAC, cmd.WONT, subCmd})
+		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.WONT, subCmd})
 		c.EnableOptions[subCmd] = false
 	case cmd.DO:
-		if c.IsSupportOption(subCmd) {
-			if !c.EnableOptions[subCmd] {
-				err = c.WriteBytes([]byte{cmd.IAC, cmd.WILL, subCmd})
-				c.EnableOptions[subCmd] = true
-			}
-			switch subCmd {
-			case OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE:
-				width, hight, _ := terminal.GetSize(syscall.Stdin)
-				optionDetail := []byte{cmd.IAC, cmd.SB, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE}
-				windowSizeBuffer := new(bytes.Buffer)
-				binary.Write(windowSizeBuffer, binary.BigEndian, int16(width))
-				binary.Write(windowSizeBuffer, binary.BigEndian, int16(hight))
-				err = c.WriteBytes(append(optionDetail, windowSizeBuffer.Bytes()...))
-			}
-		} else {
-			err = c.WriteBytes([]byte{cmd.IAC, cmd.WONT, subCmd})
+		if !c.IsSupportOption(subCmd) {
+			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.WONT, subCmd})
 			c.EnableOptions[subCmd] = false
+			break
 		}
+		if !c.EnableOptions[subCmd] {
+			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.WILL, subCmd})
+			c.EnableOptions[subCmd] = true
+		}
+		switch subCmd {
+		case OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE:
+			width, hight, _ := terminal.GetSize(syscall.Stdin)
+			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SB, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE})
+			binary.Write(bufCmdsRes, binary.BigEndian, int16(width))
+			binary.Write(bufCmdsRes, binary.BigEndian, int16(hight))
+		}
+		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SE})
 	case cmd.DONT:
-		err = c.WriteBytes([]byte{cmd.IAC, cmd.DONT, subCmd})
+		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.DONT, subCmd})
 		c.EnableOptions[subCmd] = false
 	}
-	return err
+	return bufCmdsRes.Bytes(), err
 }
 
 func (c *Client) Read() ([]byte, error) {
+	var err error
+	var byteResCmd []byte
 	byteMessage, err := c.ReadAll()
 	if err != nil {
 		return nil, err
@@ -100,7 +102,8 @@ func (c *Client) Read() ([]byte, error) {
 	subCmd := byte(0)
 	i := -1
 	optionStartIndex := -1
-	messageBuffer := new(bytes.Buffer)
+	bufMessage := new(bytes.Buffer)
+	bufCmdsRes := new(bytes.Buffer)
 	for i < len(byteMessage)-1 {
 		i++
 		b := byteMessage[i]
@@ -115,7 +118,8 @@ func (c *Client) Read() ([]byte, error) {
 				i += 2
 				continue
 			case cmd.SE:
-				err = c.ResCmd(cmd.SB, subCmd, byteMessage[optionStartIndex:i-1]...)
+				byteResCmd, err = c.BuildCmdsRes(cmd.SB, subCmd, byteMessage[optionStartIndex:i-1]...)
+				_, err = bufCmdsRes.Write(byteResCmd)
 				if err != nil {
 					return nil, err
 				}
@@ -123,11 +127,13 @@ func (c *Client) Read() ([]byte, error) {
 			}
 			// commands
 			if !cmd.IsNeedOption(mainCmd) {
-				err = c.ResCmd(mainCmd, 0)
+				byteResCmd, err = c.BuildCmdsRes(mainCmd, 0)
+				_, err = bufCmdsRes.Write(byteResCmd)
 			} else {
 				i++
 				subCmd = byteMessage[i]
-				err = c.ResCmd(mainCmd, subCmd)
+				byteResCmd, err = c.BuildCmdsRes(mainCmd, subCmd)
+				_, err = bufCmdsRes.Write(byteResCmd)
 			}
 			if err != nil {
 				return nil, err
@@ -138,12 +144,13 @@ func (c *Client) Read() ([]byte, error) {
 		if optionStartIndex >= 0 {
 			continue
 		}
-		err = messageBuffer.WriteByte(b)
+		err = bufMessage.WriteByte(b)
 		if err != nil {
 			return nil, err
 		}
 	}
-	return messageBuffer.Bytes(), err
+	c.WriteBytes(bufCmdsRes.Bytes())
+	return bufMessage.Bytes(), err
 }
 
 func (c *Client) ScanAndWrite(tty *tty.TTY) error {

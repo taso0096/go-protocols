@@ -56,11 +56,11 @@ func (c *Connection) IsSupportOption(option byte) bool {
 }
 
 func (c *Connection) ReqCmds(subCmds []byte) error {
-	cmdsBuffer := bytes.NewBuffer([]byte{})
+	bufReqCmds := new(bytes.Buffer)
 	for _, subCmd := range subCmds {
-		cmdsBuffer.Write([]byte{cmd.IAC, cmd.WILL, subCmd})
+		bufReqCmds.Write([]byte{cmd.IAC, cmd.WILL, subCmd})
 	}
-	err := c.WriteBytes(cmdsBuffer.Bytes())
+	err := c.WriteBytes(bufReqCmds.Bytes())
 	if err != nil {
 		return err
 	}
