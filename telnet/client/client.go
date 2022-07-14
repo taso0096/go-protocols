@@ -34,6 +34,25 @@ func (c *Client) Call() error {
 func (c *Client) ResCmd(mainCmd byte, subCmd byte, options ...byte) error {
 	var err error
 	switch mainCmd {
+	case cmd.SB:
+		if !c.IsSupportOption(subCmd) {
+			err = c.WriteBytes([]byte{cmd.IAC, cmd.DONT, subCmd})
+			c.EnableOptions[subCmd] = false
+			break
+		}
+		optionDetail := []byte{cmd.IAC, cmd.SB, subCmd}
+		switch subCmd {
+		case OPTION_TERMINAL_SPEED:
+			SEND := byte(1)
+			if options[0] != SEND {
+				break
+			}
+			IS := byte(0)
+			terminalSpeedBuffer := bytes.NewBuffer([]byte{IS})
+			terminalSpeedBuffer.Write([]byte("38400,38400"))
+			err = c.WriteBytes(append(optionDetail, terminalSpeedBuffer.Bytes()...))
+		}
+		err = c.WriteBytes([]byte{cmd.IAC, cmd.SE})
 	case cmd.WILL:
 		if c.IsSupportOption(subCmd) {
 			err = c.WriteBytes([]byte{cmd.IAC, cmd.DO, subCmd})
@@ -55,10 +74,10 @@ func (c *Client) ResCmd(mainCmd byte, subCmd byte, options ...byte) error {
 			case OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE:
 				width, hight, _ := terminal.GetSize(syscall.Stdin)
 				optionDetail := []byte{cmd.IAC, cmd.SB, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE}
-				bufWindowSize := new(bytes.Buffer)
-				binary.Write(bufWindowSize, binary.BigEndian, int16(width))
-				binary.Write(bufWindowSize, binary.BigEndian, int16(hight))
-				err = c.WriteBytes(append(optionDetail, bufWindowSize.Bytes()...))
+				windowSizeBuffer := new(bytes.Buffer)
+				binary.Write(windowSizeBuffer, binary.BigEndian, int16(width))
+				binary.Write(windowSizeBuffer, binary.BigEndian, int16(hight))
+				err = c.WriteBytes(append(optionDetail, windowSizeBuffer.Bytes()...))
 			}
 		} else {
 			err = c.WriteBytes([]byte{cmd.IAC, cmd.WONT, subCmd})
@@ -76,10 +95,10 @@ func (c *Client) Read() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	var subCmd byte = 0
+	subCmd := byte(0)
 	i := -1
 	optionStartIndex := -1
-	messageBuffer := bytes.NewBuffer([]byte{})
+	messageBuffer := new(bytes.Buffer)
 	for i < len(byteMessage)-1 {
 		i++
 		b := byteMessage[i]
@@ -184,7 +203,7 @@ func Run(ip string, port int) {
 	defer tty.Close()
 
 	// Init TELNET Client
-	supportOptions := []byte{OPTION_ECHO, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE}
+	supportOptions := []byte{OPTION_ECHO, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE, OPTION_TERMINAL_SPEED}
 	c := Init(ip, port, supportOptions)
 
 	// TCP Call
