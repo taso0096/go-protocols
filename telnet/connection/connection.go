@@ -16,6 +16,8 @@ type Connection struct {
 	// TELNET Config
 	SupportOptions []byte
 	EnableOptions  map[byte]bool
+	// Build TELNET Commands Response Function
+	BuildCmdsRes func(c Connection, mainCmd byte, subCmd byte, options ...byte) ([]byte, error)
 }
 
 func (c *Connection) WriteByte(message byte) error {
@@ -28,6 +30,67 @@ func (c *Connection) WriteBytes(message []byte) error {
 	return err
 }
 
+func (c *Connection) ReadMessage() ([]byte, error) {
+	var err error
+	var byteResCmd []byte
+	byteMessage, err := c.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	subCmd := byte(0)
+	i := -1
+	optionStartIndex := -1
+	bufMessage := new(bytes.Buffer)
+	bufCmdsRes := new(bytes.Buffer)
+	for i < len(byteMessage)-1 {
+		i++
+		b := byteMessage[i]
+		if b == cmd.IAC {
+			i++
+			mainCmd := byteMessage[i]
+			// subnegotiation
+			switch mainCmd {
+			case cmd.SB:
+				subCmd = byteMessage[i+1]
+				optionStartIndex = i + 2
+				i += 2
+				continue
+			case cmd.SE:
+				byteResCmd, err = c.BuildCmdsRes(*c, cmd.SB, subCmd, byteMessage[optionStartIndex:i-1]...)
+				_, err = bufCmdsRes.Write(byteResCmd)
+				if err != nil {
+					return nil, err
+				}
+				optionStartIndex = -1
+			}
+			// commands
+			if !cmd.IsNeedOption(mainCmd) {
+				byteResCmd, err = c.BuildCmdsRes(*c, mainCmd, 0)
+				_, err = bufCmdsRes.Write(byteResCmd)
+			} else {
+				i++
+				subCmd = byteMessage[i]
+				byteResCmd, err = c.BuildCmdsRes(*c, mainCmd, subCmd)
+				_, err = bufCmdsRes.Write(byteResCmd)
+			}
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+		// subnegotiation
+		if optionStartIndex >= 0 {
+			continue
+		}
+		err = bufMessage.WriteByte(b)
+		if err != nil {
+			return nil, err
+		}
+	}
+	c.WriteBytes(bufCmdsRes.Bytes())
+	return bufMessage.Bytes(), err
+}
+
 func (c *Connection) ReadByte() (byte, error) {
 	return c.Reader.ReadByte()
 }
@@ -35,14 +98,12 @@ func (c *Connection) ReadByte() (byte, error) {
 func (c *Connection) ReadBytes(length int) ([]byte, error) {
 	message := make([]byte, length)
 	n, err := c.Reader.Read(message)
-
 	return message[:n], err
 }
 
 func (c *Connection) ReadAll() ([]byte, error) {
 	message := make([]byte, c.Reader.Size())
 	n, err := c.Reader.Read(message)
-
 	return message[:n], err
 }
 
