@@ -31,7 +31,7 @@ func (c *Client) Call() error {
 	return err
 }
 
-func (c *Client) ResCmd(mainCmd byte, subCmd byte) error {
+func (c *Client) ResCmd(mainCmd byte, subCmd byte, options ...byte) error {
 	var err error
 	switch mainCmd {
 	case cmd.WILL:
@@ -76,18 +76,36 @@ func (c *Client) Read() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	startIndex := -1
-	for startIndex < len(byteMessage)-1 {
-		startIndex++
-		b := byteMessage[startIndex]
+	var subCmd byte = 0
+	i := -1
+	optionStartIndex := -1
+	messageBuffer := bytes.NewBuffer([]byte{})
+	for i < len(byteMessage)-1 {
+		i++
+		b := byteMessage[i]
 		if b == cmd.IAC {
-			startIndex++
-			mainCmd := byteMessage[startIndex]
+			i++
+			mainCmd := byteMessage[i]
+			// subnegotiation
+			switch mainCmd {
+			case cmd.SB:
+				subCmd = byteMessage[i+1]
+				optionStartIndex = i + 2
+				i += 2
+				continue
+			case cmd.SE:
+				err = c.ResCmd(cmd.SB, subCmd, byteMessage[optionStartIndex:i-1]...)
+				if err != nil {
+					return nil, err
+				}
+				optionStartIndex = -1
+			}
+			// commands
 			if !cmd.IsNeedOption(mainCmd) {
 				err = c.ResCmd(mainCmd, 0)
 			} else {
-				startIndex++
-				subCmd := byteMessage[startIndex]
+				i++
+				subCmd = byteMessage[i]
 				err = c.ResCmd(mainCmd, subCmd)
 			}
 			if err != nil {
@@ -95,9 +113,16 @@ func (c *Client) Read() ([]byte, error) {
 			}
 			continue
 		}
-		break
+		// subnegotiation
+		if optionStartIndex >= 0 {
+			continue
+		}
+		err = messageBuffer.WriteByte(b)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return byteMessage[startIndex:], err
+	return messageBuffer.Bytes(), err
 }
 
 func (c *Client) ScanAndWrite(tty *tty.TTY) error {
