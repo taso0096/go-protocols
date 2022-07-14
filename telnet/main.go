@@ -2,8 +2,8 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"telnet/client"
+	"telnet/server"
 )
 
 func main() {
@@ -13,7 +13,7 @@ func main() {
 	flag.Parse()
 
 	if *isServerMode {
-		fmt.Println("Server is not yet implemented.")
+		server.Run(*ip, *port)
 	} else {
 		client.Run(*ip, *port)
 	}

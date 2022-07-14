@@ -6,9 +6,13 @@ replace (
 	telnet/client => ./client
 	telnet/command => ./command
 	telnet/connection => ./connection
+	telnet/server => ./server
 )
 
-require telnet/client v0.0.0-00010101000000-000000000000
+require (
+	telnet/client v0.0.0-00010101000000-000000000000
+	telnet/server v0.0.0-00010101000000-000000000000
+)
 
 require (
 	github.com/mattn/go-isatty v0.0.10 // indirect
