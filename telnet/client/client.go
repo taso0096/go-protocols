@@ -40,17 +40,19 @@ func (c *Client) ResCmd(mainCmd byte, subCmd byte, options ...byte) error {
 			c.EnableOptions[subCmd] = false
 			break
 		}
-		optionDetail := []byte{cmd.IAC, cmd.SB, subCmd}
+		SEND := byte(1)
+		IS := byte(0)
+		if options[0] != SEND {
+			break
+		}
+		optionResBuffer := bytes.NewBuffer([]byte{cmd.IAC, cmd.SB, subCmd, IS})
 		switch subCmd {
 		case OPTION_TERMINAL_SPEED:
-			SEND := byte(1)
-			if options[0] != SEND {
-				break
-			}
-			IS := byte(0)
-			terminalSpeedBuffer := bytes.NewBuffer([]byte{IS})
-			terminalSpeedBuffer.Write([]byte("38400,38400"))
-			err = c.WriteBytes(append(optionDetail, terminalSpeedBuffer.Bytes()...))
+			optionResBuffer.Write([]byte("38400,38400"))
+			err = c.WriteBytes(optionResBuffer.Bytes())
+		case OPTION_TERMINAL_TYPE:
+			optionResBuffer.Write([]byte("XTERM-256COLOR"))
+			err = c.WriteBytes(optionResBuffer.Bytes())
 		}
 		err = c.WriteBytes([]byte{cmd.IAC, cmd.SE})
 	case cmd.WILL:
@@ -203,7 +205,7 @@ func Run(ip string, port int) {
 	defer tty.Close()
 
 	// Init TELNET Client
-	supportOptions := []byte{OPTION_ECHO, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE, OPTION_TERMINAL_SPEED}
+	supportOptions := []byte{OPTION_ECHO, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE, OPTION_TERMINAL_SPEED, OPTION_TERMINAL_TYPE}
 	c := Init(ip, port, supportOptions)
 
 	// TCP Call
