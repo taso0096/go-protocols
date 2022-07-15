@@ -14,6 +14,7 @@ import (
 	"syscall"
 	cmd "telnet/command"
 	"telnet/connection"
+	opt "telnet/option"
 
 	"github.com/mattn/go-tty"
 	"golang.org/x/crypto/ssh/terminal"
@@ -38,7 +39,7 @@ func (c *Client) ScanAndWrite(tty *tty.TTY) error {
 		if err != nil {
 			return err
 		}
-		if !c.EnableOptions[OPTION_ECHO] {
+		if !c.EnableOptions[opt.ECHO] {
 			switch r {
 			case '\r', '\n':
 				c.InputLength = 0
@@ -69,7 +70,7 @@ func (c *Client) CatchSignal() {
 		case os.Interrupt:
 			err = c.WriteByte(3)
 		case syscall.SIGWINCH:
-			byteNAWSReq, err := BuildCmdRes(c.Connection, cmd.DO, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE)
+			byteNAWSReq, err := BuildCmdRes(c.Connection, cmd.DO, opt.NEGOTIATE_ABOUT_WINDOW_SIZE)
 			if err != nil {
 				log.Fatal("BuildCmdRes Error:", err)
 			}
@@ -100,7 +101,7 @@ func Run(ip string, port int) {
 	defer tty.Close()
 
 	// Init TELNET Client
-	supportOptions := []byte{OPTION_ECHO, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE, OPTION_TERMINAL_SPEED, OPTION_TERMINAL_TYPE}
+	supportOptions := []byte{opt.ECHO, opt.NEGOTIATE_ABOUT_WINDOW_SIZE, opt.TERMINAL_SPEED, opt.TERMINAL_TYPE}
 	c := Init(ip, port, supportOptions)
 
 	// TCP Call
@@ -158,10 +159,10 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 			}
 			bufOptionRes := bytes.NewBuffer([]byte{cmd.IAC, cmd.SB, subCmd, IS})
 			switch subCmd {
-			case OPTION_TERMINAL_SPEED:
+			case opt.TERMINAL_SPEED:
 				bufOptionRes.Write([]byte("38400,38400"))
 				_, err = bufCmdsRes.Write(bufOptionRes.Bytes())
-			case OPTION_TERMINAL_TYPE:
+			case opt.TERMINAL_TYPE:
 				bufOptionRes.Write([]byte("XTERM-256COLOR"))
 				_, err = bufCmdsRes.Write(bufOptionRes.Bytes())
 			}
@@ -198,9 +199,9 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 			nextStatus = true
 		}
 		switch subCmd {
-		case OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE:
+		case opt.NEGOTIATE_ABOUT_WINDOW_SIZE:
 			width, hight, _ := terminal.GetSize(syscall.Stdin)
-			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SB, OPTION_NEGOTIATE_ABOUT_WINDOW_SIZE})
+			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SB, opt.NEGOTIATE_ABOUT_WINDOW_SIZE})
 			binary.Write(bufCmdsRes, binary.BigEndian, int16(width))
 			binary.Write(bufCmdsRes, binary.BigEndian, int16(hight))
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SE})

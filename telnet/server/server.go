@@ -11,6 +11,7 @@ import (
 	"strconv"
 	cmd "telnet/command"
 	"telnet/connection"
+	opt "telnet/option"
 )
 
 type Server struct {
@@ -88,7 +89,7 @@ SCAN_BYTE_MESSAGE:
 		case '\r', '\n':
 			byteParsedMessage = s.BufParsedMessage.Bytes()
 			s.BufParsedMessage.Reset()
-			if s.EnableOptions[OPTION_ECHO] {
+			if s.EnableOptions[opt.ECHO] {
 				s.WriteBytes([]byte("\r\n"))
 			}
 			break SCAN_BYTE_MESSAGE
@@ -97,7 +98,7 @@ SCAN_BYTE_MESSAGE:
 				continue
 			}
 			s.BufParsedMessage.Truncate(s.BufParsedMessage.Len() - 1)
-			if s.EnableOptions[OPTION_ECHO] {
+			if s.EnableOptions[opt.ECHO] {
 				s.WriteBytes([]byte("\b \b"))
 			}
 		default:
@@ -105,7 +106,7 @@ SCAN_BYTE_MESSAGE:
 			bufEchoMessage.WriteByte(b)
 		}
 	}
-	if s.EnableOptions[OPTION_ECHO] {
+	if s.EnableOptions[opt.ECHO] {
 		s.WriteBytes(bufEchoMessage.Bytes())
 	}
 	return byteParsedMessage, nil
@@ -128,7 +129,7 @@ func Init(ip string, port int, supportOptions []byte) Server {
 
 func Run(ip string, port int) {
 	// Init TELNET Server
-	supportOptions := []byte{OPTION_ECHO}
+	supportOptions := []byte{opt.ECHO}
 	s := Init(ip, port, supportOptions)
 
 	fmt.Printf("Listen on %s:%d...\n", ip, port)

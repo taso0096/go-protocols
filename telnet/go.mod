@@ -6,6 +6,7 @@ replace (
 	telnet/client => ./client
 	telnet/command => ./command
 	telnet/connection => ./connection
+	telnet/option => ./option
 	telnet/server => ./server
 )
 
@@ -22,4 +23,5 @@ require (
 	golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1 // indirect
 	telnet/command v0.0.0-00010101000000-000000000000 // indirect
 	telnet/connection v0.0.0-00010101000000-000000000000 // indirect
+	telnet/option v0.0.0-00010101000000-000000000000 // indirect
 )
