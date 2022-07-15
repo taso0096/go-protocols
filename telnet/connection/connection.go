@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"net"
 	cmd "telnet/command"
+	opt "telnet/option"
 )
 
 type Connection struct {
@@ -119,6 +120,10 @@ func (c *Connection) IsSupportOption(option byte) bool {
 func (c *Connection) ReqCmds(subCmds []byte) error {
 	bufReqCmds := new(bytes.Buffer)
 	for _, subCmd := range subCmds {
+		if subCmd == opt.ECHO {
+			bufReqCmds.Write([]byte{cmd.IAC, cmd.DO, subCmd})
+			continue
+		}
 		bufReqCmds.Write([]byte{cmd.IAC, cmd.WILL, subCmd})
 	}
 	err := c.WriteBytes(bufReqCmds.Bytes())

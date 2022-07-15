@@ -152,6 +152,10 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.DO, subCmd})
 		nextStatus = true
 	case cmd.WONT:
+		if subCmd == opt.ECHO {
+			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.WILL, opt.ECHO})
+			break
+		}
 		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.WONT, subCmd})
 		nextStatus = false
 	case cmd.DO:
@@ -159,8 +163,9 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.WONT, subCmd})
 			nextStatus = false
 			break
+		} else if subCmd != opt.ECHO {
+			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.WILL, subCmd})
 		}
-		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.WILL, subCmd})
 		nextStatus = true
 	case cmd.DONT:
 		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.DONT, subCmd})
