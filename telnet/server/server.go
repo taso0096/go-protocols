@@ -70,7 +70,7 @@ func (s *Server) ListenAndHandle() {
 		if string(byteParsedMessage) == "exit" {
 			break
 		}
-		s.WriteBytes(append(byteParsedMessage, []byte{'\r', '\n'}...))
+		s.WriteBytes(append(byteParsedMessage, []byte("\r\n")...))
 		s.WriteBytes([]byte("> "))
 	}
 	s.Conn.Close()
@@ -89,9 +89,14 @@ SCAN_BYTE_MESSAGE:
 			byteParsedMessage = s.BufParsedMessage.Bytes()
 			s.BufParsedMessage.Reset()
 			if s.EnableOptions[OPTION_ECHO] {
-				s.WriteBytes([]byte{'\r', '\n'})
+				s.WriteBytes([]byte("\r\n"))
 			}
 			break SCAN_BYTE_MESSAGE
+		case '\177':
+			s.BufParsedMessage.Truncate(s.BufParsedMessage.Len() - 1)
+			if s.EnableOptions[OPTION_ECHO] {
+				s.WriteBytes([]byte("\b \b"))
+			}
 		default:
 			s.BufParsedMessage.WriteByte(b)
 			bufEchoMessage.WriteByte(b)
