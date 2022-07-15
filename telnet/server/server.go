@@ -52,6 +52,7 @@ func (s *Server) ListenAndHandle() {
 	}
 
 	s.WriteBytes([]byte("> "))
+READ_BYTE_MESSAGE:
 	for {
 		byteMessage, err := s.ReadMessage()
 		if err == io.EOF {
@@ -68,10 +69,14 @@ func (s *Server) ListenAndHandle() {
 			continue
 		}
 		log.Println(string(byteParsedMessage))
-		if string(byteParsedMessage) == "exit" {
-			break
+		switch string(byteParsedMessage) {
+		case "exit":
+			break READ_BYTE_MESSAGE
+		case "\x00":
+			s.WriteBytes([]byte("\r\n"))
+		default:
+			s.WriteBytes(append(byteParsedMessage, []byte("\r\n")...))
 		}
-		s.WriteBytes(append(byteParsedMessage, []byte("\r\n")...))
 		s.WriteBytes([]byte("> "))
 	}
 	s.Conn.Close()
@@ -87,6 +92,9 @@ SCAN_BYTE_MESSAGE:
 		b := byteMessage[i]
 		switch b {
 		case '\r', '\n':
+			if s.BufParsedMessage.Len() == 0 {
+				s.BufParsedMessage.WriteByte(0)
+			}
 			byteParsedMessage = s.BufParsedMessage.Bytes()
 			s.BufParsedMessage.Reset()
 			if s.EnableOptions[opt.ECHO] {
