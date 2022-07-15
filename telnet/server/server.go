@@ -165,7 +165,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 
 	status, ok := c.EnableOptions[subCmd]
 	if ok && status == nextStatus {
-		return nil, nil
+		return nil, err
 	}
 	c.EnableOptions[subCmd] = nextStatus
 	return bufCmdsRes.Bytes(), err
