@@ -129,7 +129,7 @@ func Init(ip string, port int, supportOptions []byte) Server {
 
 func Run(ip string, port int) {
 	// Init TELNET Server
-	supportOptions := []byte{opt.ECHO}
+	supportOptions := []byte{opt.ECHO, opt.SUPPRESS_GO_AHEAD}
 	s := Init(ip, port, supportOptions)
 
 	fmt.Printf("Listen on %s:%d...\n", ip, port)

@@ -101,7 +101,7 @@ func Run(ip string, port int) {
 	defer tty.Close()
 
 	// Init TELNET Client
-	supportOptions := []byte{opt.ECHO, opt.NEGOTIATE_ABOUT_WINDOW_SIZE, opt.TERMINAL_SPEED, opt.TERMINAL_TYPE}
+	supportOptions := []byte{opt.ECHO, opt.NEGOTIATE_ABOUT_WINDOW_SIZE, opt.TERMINAL_SPEED, opt.TERMINAL_TYPE, opt.SUPPRESS_GO_AHEAD}
 	c := Init(ip, port, supportOptions)
 
 	// TCP Call
