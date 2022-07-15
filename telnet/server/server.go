@@ -93,6 +93,9 @@ SCAN_BYTE_MESSAGE:
 			}
 			break SCAN_BYTE_MESSAGE
 		case '\177':
+			if s.BufParsedMessage.Len() == 0 {
+				continue
+			}
 			s.BufParsedMessage.Truncate(s.BufParsedMessage.Len() - 1)
 			if s.EnableOptions[OPTION_ECHO] {
 				s.WriteBytes([]byte("\b \b"))
