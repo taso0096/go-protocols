@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
@@ -54,16 +55,16 @@ func (s *Server) ListenAndHandle() error {
 
 	// Start pty
 	bash := exec.Command("bash", "-c", "stty -echo && bash")
-	ptmx, err := pty.Start(bash)
+	s.Ptmx, err = pty.Start(bash)
 	if err != nil {
 		log.Fatal("pty.Start Error:", err)
 	}
-	defer ptmx.Close()
+	defer s.Ptmx.Close()
 	// Writes pty results to TELNET connection
 	go func() {
 		byteResult := make([]byte, 4096)
 		for {
-			n, err := ptmx.Read(byteResult)
+			n, err := s.Ptmx.Read(byteResult)
 			if err != nil {
 				s.Conn.Close()
 				return
@@ -85,7 +86,7 @@ func (s *Server) ListenAndHandle() error {
 			continue
 		}
 		log.Print(string(byteParsedMessage))
-		ptmx.WriteString(string(byteParsedMessage))
+		s.Ptmx.WriteString(string(byteParsedMessage))
 	}
 }
 
@@ -142,7 +143,7 @@ func Init(ip string, port int, supportOptions []byte) Server {
 
 func Run(ip string, port int) {
 	// Init TELNET Server
-	supportOptions := []byte{opt.ECHO, opt.SUPPRESS_GO_AHEAD}
+	supportOptions := []byte{opt.ECHO, opt.SUPPRESS_GO_AHEAD, opt.NEGOTIATE_ABOUT_WINDOW_SIZE}
 	s := Init(ip, port, supportOptions)
 
 	fmt.Printf("Listen on %s:%d...\n", ip, port)
@@ -156,6 +157,37 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 	var err error
 	bufCmdsRes := new(bytes.Buffer)
 	nextStatus := false
+
+	if !cmd.IsNeedOption(mainCmd) {
+		switch mainCmd {
+		case cmd.SB:
+			if !c.IsSupportOption(subCmd) {
+				_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.DONT, subCmd})
+				nextStatus = false
+				break
+			}
+			switch subCmd {
+			case opt.NEGOTIATE_ABOUT_WINDOW_SIZE:
+				if len(options) != 4 {
+					break
+				}
+				err := pty.Setsize(c.Ptmx, &pty.Winsize{
+					Rows: binary.BigEndian.Uint16(options[2:4]),
+					Cols: binary.BigEndian.Uint16(options[0:2]),
+				})
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+
+		_, ok := c.EnableOptions[subCmd]
+		if !ok {
+			c.EnableOptions[subCmd] = nextStatus
+		}
+		return bufCmdsRes.Bytes(), err
+	}
+
 	switch mainCmd {
 	case cmd.WILL:
 		if !c.IsSupportOption(subCmd) {
