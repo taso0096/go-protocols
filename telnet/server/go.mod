@@ -11,6 +11,7 @@ replace (
 require telnet/connection v0.0.0-00010101000000-000000000000
 
 require (
+	github.com/creack/pty v1.1.18
 	telnet/command v0.0.0-00010101000000-000000000000
 	telnet/option v0.0.0-00010101000000-000000000000
 )

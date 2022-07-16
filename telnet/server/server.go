@@ -4,14 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"os"
+	"os/exec"
 	"strconv"
 	cmd "telnet/command"
 	"telnet/connection"
 	opt "telnet/option"
+
+	"github.com/creack/pty"
 )
 
 type Server struct {
@@ -36,7 +37,7 @@ func (s *Server) Listen() error {
 	return nil
 }
 
-func (s *Server) ListenAndHandle() {
+func (s *Server) ListenAndHandle() error {
 	s.Reset()
 	err := s.Listen()
 	if err != nil {
@@ -51,15 +52,30 @@ func (s *Server) ListenAndHandle() {
 		log.Fatal("Write Error:", err)
 	}
 
-	s.WriteBytes([]byte("> "))
-READ_BYTE_MESSAGE:
+	// Start pty
+	bash := exec.Command("bash", "-c", "stty -echo && bash")
+	ptmx, err := pty.Start(bash)
+	if err != nil {
+		log.Fatal("pty.Start Error:", err)
+	}
+	defer ptmx.Close()
+	// Writes pty results to TELNET connection
+	go func() {
+		byteResult := make([]byte, 4096)
+		for {
+			n, err := ptmx.Read(byteResult)
+			if err != nil {
+				s.Conn.Close()
+				return
+			}
+			s.WriteBytes(byteResult[:n])
+		}
+	}()
+
 	for {
 		byteMessage, err := s.ReadMessage()
-		if err == io.EOF {
-			fmt.Println("Connection closed by foreign host.")
-			os.Exit(0)
-		} else if err != nil {
-			log.Fatal("Read Error:", err)
+		if err != nil {
+			return err
 		}
 		if byteMessage == nil {
 			continue
@@ -69,17 +85,8 @@ READ_BYTE_MESSAGE:
 			continue
 		}
 		log.Println(string(byteParsedMessage))
-		switch string(byteParsedMessage) {
-		case "exit":
-			break READ_BYTE_MESSAGE
-		case "\x00":
-			s.WriteBytes([]byte("\r\n"))
-		default:
-			s.WriteBytes(append(byteParsedMessage, []byte("\r\n")...))
-		}
-		s.WriteBytes([]byte("> "))
+		ptmx.WriteString(string(byteParsedMessage) + "\n")
 	}
-	s.Conn.Close()
 }
 
 func (s *Server) ParseMessage(byteMessage []byte) ([]byte, error) {
@@ -93,7 +100,7 @@ SCAN_BYTE_MESSAGE:
 		switch b {
 		case '\r', '\n':
 			if s.BufParsedMessage.Len() == 0 {
-				s.BufParsedMessage.WriteByte(0)
+				s.BufParsedMessage.Write([]byte("\r\n"))
 			}
 			byteParsedMessage = s.BufParsedMessage.Bytes()
 			s.BufParsedMessage.Reset()
@@ -142,7 +149,8 @@ func Run(ip string, port int) {
 
 	fmt.Printf("Listen on %s:%d...\n", ip, port)
 	for {
-		s.ListenAndHandle()
+		err := s.ListenAndHandle()
+		log.Println(err)
 	}
 }
 
