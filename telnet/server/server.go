@@ -57,7 +57,7 @@ func (s *Server) ListenAndHandle() error {
 	}
 
 	// Start pty
-	bash := exec.Command("bash")
+	bash := exec.Command("login")
 	s.Ptmx, err = pty.Start(bash)
 	if err != nil {
 		return err
