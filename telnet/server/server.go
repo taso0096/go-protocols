@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os/exec"
 	"strconv"
+	"strings"
 	cmd "telnet/command"
 	"telnet/connection"
 	opt "telnet/option"
@@ -18,7 +20,7 @@ import (
 
 type Server struct {
 	connection.Connection
-	BufParsedMessage bytes.Buffer
+	BufEchoMessage bytes.Buffer
 }
 
 func (s *Server) Listen() error {
@@ -39,10 +41,11 @@ func (s *Server) Listen() error {
 }
 
 func (s *Server) ListenAndHandle() error {
+	errChan := make(chan error, 2)
 	s.Reset()
 	err := s.Listen()
 	if err != nil {
-		log.Fatal("Listen Error:", err)
+		return err
 	}
 	defer s.Conn.Close()
 	fmt.Printf("Connected.\n")
@@ -50,85 +53,78 @@ func (s *Server) ListenAndHandle() error {
 	// Request TELNET Commands
 	err = s.ReqCmds(s.SupportOptions)
 	if err != nil {
-		log.Fatal("Write Error:", err)
+		return err
 	}
 
 	// Start pty
-	bash := exec.Command("bash", "-c", "stty -echo && bash")
+	bash := exec.Command("bash")
 	s.Ptmx, err = pty.Start(bash)
 	if err != nil {
-		log.Fatal("pty.Start Error:", err)
+		return err
 	}
 	defer s.Ptmx.Close()
 	// Writes pty results to TELNET connection
 	go func() {
+		startIndex := 0
 		byteResult := make([]byte, 4096)
 		for {
 			n, err := s.Ptmx.Read(byteResult)
 			if err != nil {
+				errChan <- err
 				s.Conn.Close()
 				return
 			}
-			s.WriteBytes(byteResult[:n])
+			if !s.EnableOptions[opt.ECHO] {
+				startIndex = 0
+				for i := 0; i < n; i++ {
+					b, err := s.BufEchoMessage.ReadByte()
+					if b == '\177' {
+						startIndex = n
+						break
+					}
+					if err == io.EOF {
+						break
+					} else if err != nil {
+						errChan <- err
+						s.Conn.Close()
+						return
+					}
+					if strings.Contains("\r\n", string(b)) && strings.Contains("\r\n", string(byteResult[i])) {
+						startIndex++
+						i++
+					} else if b != byteResult[i] {
+						break
+					}
+					startIndex++
+				}
+				s.BufEchoMessage.Reset()
+			}
+			if startIndex < n {
+				s.WriteBytes(byteResult[startIndex:n])
+			}
 		}
 	}()
 
 	for {
 		byteMessage, err := s.ReadMessage()
 		if err != nil {
-			return err
+			errChan <- err
+			break
 		}
 		if byteMessage == nil {
 			continue
 		}
-		byteParsedMessage, err := s.ParseMessage(byteMessage)
-		if byteParsedMessage == nil {
-			continue
+		if !s.EnableOptions[opt.ECHO] {
+			s.BufEchoMessage.Write(byteMessage)
 		}
-		log.Print(string(byteParsedMessage))
-		s.Ptmx.WriteString(string(byteParsedMessage))
+		s.Ptmx.Write(byteMessage)
 	}
-}
-
-func (s *Server) ParseMessage(byteMessage []byte) ([]byte, error) {
-	var byteParsedMessage []byte
-	bufEchoMessage := new(bytes.Buffer)
-	i := -1
-SCAN_BYTE_MESSAGE:
-	for i < len(byteMessage)-1 {
-		i++
-		b := byteMessage[i]
-		switch b {
-		case '\r', '\n':
-			s.BufParsedMessage.Write([]byte("\n"))
-			byteParsedMessage = s.BufParsedMessage.Bytes()
-			s.BufParsedMessage.Reset()
-			if s.EnableOptions[opt.ECHO] {
-				s.WriteBytes([]byte("\r\n"))
-			}
-			break SCAN_BYTE_MESSAGE
-		case '\177':
-			if s.BufParsedMessage.Len() == 0 {
-				continue
-			}
-			s.BufParsedMessage.Truncate(s.BufParsedMessage.Len() - 1)
-			if s.EnableOptions[opt.ECHO] {
-				s.WriteBytes([]byte("\b \b"))
-			}
-		default:
-			s.BufParsedMessage.WriteByte(b)
-			bufEchoMessage.WriteByte(b)
-		}
-	}
-	if s.EnableOptions[opt.ECHO] {
-		s.WriteBytes(bufEchoMessage.Bytes())
-	}
-	return byteParsedMessage, nil
+	return <-errChan
 }
 
 func (s *Server) Reset() {
 	s.EnableOptions = map[byte]bool{}
-	s.BufParsedMessage = *new(bytes.Buffer)
+	s.BufEchoMessage = *new(bytes.Buffer)
 }
 
 func Init(ip string, port int, supportOptions []byte) Server {
@@ -149,7 +145,7 @@ func Run(ip string, port int) {
 	fmt.Printf("Listen on %s:%d...\n", ip, port)
 	for {
 		err := s.ListenAndHandle()
-		log.Println(err)
+		log.Println("ListenAndHandle Error:", err)
 	}
 }
 
