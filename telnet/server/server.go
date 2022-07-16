@@ -84,8 +84,8 @@ func (s *Server) ListenAndHandle() error {
 		if byteParsedMessage == nil {
 			continue
 		}
-		log.Println(string(byteParsedMessage))
-		ptmx.WriteString(string(byteParsedMessage) + "\n")
+		log.Print(string(byteParsedMessage))
+		ptmx.WriteString(string(byteParsedMessage))
 	}
 }
 
@@ -99,9 +99,7 @@ SCAN_BYTE_MESSAGE:
 		b := byteMessage[i]
 		switch b {
 		case '\r', '\n':
-			if s.BufParsedMessage.Len() == 0 {
-				s.BufParsedMessage.Write([]byte("\r\n"))
-			}
+			s.BufParsedMessage.Write([]byte("\n"))
 			byteParsedMessage = s.BufParsedMessage.Bytes()
 			s.BufParsedMessage.Reset()
 			if s.EnableOptions[opt.ECHO] {
