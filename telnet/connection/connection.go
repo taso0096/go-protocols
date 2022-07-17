@@ -42,12 +42,10 @@ func (c *Connection) ReadMessage() ([]byte, error) {
 		return nil, err
 	}
 	subCmd := byte(0)
-	i := -1
 	optionStartIndex := -1
 	bufMessage := new(bytes.Buffer)
 	bufCmdsRes := new(bytes.Buffer)
-	for i < len(byteMessage)-1 {
-		i++
+	for i := 0; i < len(byteMessage); i++ {
 		b := byteMessage[i]
 		if b == cmd.IAC {
 			i++
