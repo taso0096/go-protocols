@@ -17,6 +17,7 @@ type Connection struct {
 	Conn   net.Conn
 	Reader *bufio.Reader
 	// TELNET Config
+	IsServer       bool
 	SupportOptions []byte
 	EnableOptions  map[byte]bool
 	// Build TELNET Command Response Function
@@ -125,9 +126,16 @@ func (c *Connection) IsSupportOption(option byte) bool {
 func (c *Connection) ReqCmds(subCmds []byte) error {
 	bufReqCmds := new(bytes.Buffer)
 	for _, subCmd := range subCmds {
-		if subCmd == opt.ECHO || subCmd == opt.TERMINAL_TYPE || subCmd == opt.NEGOTIATE_ABOUT_WINDOW_SIZE {
-			bufReqCmds.Write([]byte{cmd.IAC, cmd.DO, subCmd})
-			continue
+		if c.IsServer {
+			if subCmd == opt.ECHO || subCmd == opt.TERMINAL_TYPE || subCmd == opt.NEGOTIATE_ABOUT_WINDOW_SIZE {
+				bufReqCmds.Write([]byte{cmd.IAC, cmd.DO, subCmd})
+				continue
+			}
+		} else {
+			if subCmd == opt.ECHO {
+				bufReqCmds.Write([]byte{cmd.IAC, cmd.DO, subCmd})
+				continue
+			}
 		}
 		bufReqCmds.Write([]byte{cmd.IAC, cmd.WILL, subCmd})
 	}

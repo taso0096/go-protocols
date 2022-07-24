@@ -187,8 +187,6 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.DONT, subCmd})
 			nextStatus = false
 			break
-		} else if subCmd == opt.ECHO {
-			break
 		}
 		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.DO, subCmd})
 		nextStatus = true
@@ -219,7 +217,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 	}
 
 	status, ok := c.EnableOptions[subCmd]
-	if ok && status == nextStatus {
+	if ok && status == nextStatus && subCmd != opt.ECHO {
 		return nil, err
 	}
 	c.EnableOptions[subCmd] = nextStatus

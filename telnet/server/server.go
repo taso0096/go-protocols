@@ -129,6 +129,7 @@ func (s *Server) ReadPty() {
 
 func Init(ip string, port int, supportOptions []byte) Server {
 	s := *new(Server)
+	s.IsServer = true
 	s.IP = ip
 	s.Port = port
 	s.SupportOptions = supportOptions
