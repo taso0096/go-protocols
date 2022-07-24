@@ -44,6 +44,11 @@ func (s *Server) Handle(ln net.Listener) {
 
 	go func() {
 		defer s.Conn.Close()
+		defer func() {
+			if s.Ptmx != nil {
+				s.Ptmx.Close()
+			}
+		}()
 
 		// Request TELNET Commands
 		err = s.ReqCmds(s.SupportOptions)
@@ -163,9 +168,6 @@ func Run(ip string, port int) {
 		s := Init(ip, port, supportOptions)
 		s.ErrChan = errChan
 		s.Handle(ln)
-		if s.Ptmx != nil {
-			s.Ptmx.Close()
-		}
 	}
 }
 
