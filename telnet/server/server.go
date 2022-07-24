@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -33,10 +34,10 @@ func (s *Server) Accept(ln net.Listener) error {
 	return nil
 }
 
-func (s *Server) Handle(ln net.Listener, errChan chan<- error) {
+func (s *Server) Handle(ln net.Listener) {
 	err := s.Accept(ln)
 	if err != nil {
-		errChan <- err
+		s.ErrChan <- err
 		return
 	}
 	fmt.Printf("Client Connected.\n")
@@ -47,26 +48,29 @@ func (s *Server) Handle(ln net.Listener, errChan chan<- error) {
 		// Request TELNET Commands
 		err = s.ReqCmds(s.SupportOptions)
 		if err != nil {
-			errChan <- err
+			s.ErrChan <- err
 			return
 		}
 
 		// Start pty
-		bash := exec.Command("login")
-		s.Ptmx, err = pty.Start(bash)
-		if err != nil {
-			errChan <- err
-			return
-		}
-		defer s.Ptmx.Close()
-		// Relay output from pty to client
-		go s.ReadPty(errChan)
+		s.ExecCmdChan = make(chan *exec.Cmd)
+		defer close(s.ExecCmdChan)
+		go func() {
+			for execCmd := range s.ExecCmdChan {
+				s.Ptmx, err = pty.Start(execCmd)
+				if err != nil {
+					s.ErrChan <- err
+				}
+				// Relay output from pty to client
+				s.ReadPty()
+			}
+		}()
 
 		// Relay input from client to pty
 		for {
 			byteMessage, err := s.ReadMessage()
 			if err != nil {
-				errChan <- err
+				s.ErrChan <- err
 				break
 			}
 			if byteMessage == nil {
@@ -75,18 +79,20 @@ func (s *Server) Handle(ln net.Listener, errChan chan<- error) {
 			if !s.EnableOptions[opt.ECHO] {
 				s.BufEchoMessage.Write(byteMessage)
 			}
-			s.Ptmx.Write(byteMessage)
+			if s.Ptmx != nil {
+				s.Ptmx.Write(byteMessage)
+			}
 		}
 	}()
 }
 
-func (s *Server) ReadPty(errChan chan<- error) {
+func (s *Server) ReadPty() {
 	startIndex := 0
 	byteResult := make([]byte, 4096)
 	for {
 		n, err := s.Ptmx.Read(byteResult)
 		if err != nil {
-			errChan <- err
+			s.ErrChan <- err
 			s.Conn.Close()
 			return
 		}
@@ -102,7 +108,7 @@ func (s *Server) ReadPty(errChan chan<- error) {
 				if err == io.EOF {
 					break
 				} else if err != nil {
-					errChan <- err
+					s.ErrChan <- err
 					s.Conn.Close()
 					return
 				}
@@ -151,11 +157,21 @@ func Run(ip string, port int) {
 	}()
 
 	// Handle connections
-	supportOptions := []byte{opt.ECHO, opt.SUPPRESS_GO_AHEAD, opt.NEGOTIATE_ABOUT_WINDOW_SIZE}
+	supportOptions := []byte{opt.ECHO, opt.SUPPRESS_GO_AHEAD, opt.TERMINAL_TYPE, opt.NEGOTIATE_ABOUT_WINDOW_SIZE}
 	for {
 		s := Init(ip, port, supportOptions)
-		s.Handle(ln, errChan)
+		s.ErrChan = errChan
+		s.Handle(ln)
+		if s.Ptmx != nil {
+			s.Ptmx.Close()
+		}
 	}
+}
+
+func MakeExecCmd(c connection.Connection, env []string) {
+	execCmd := exec.Command("login")
+	execCmd.Env = env
+	c.ExecCmdChan <- execCmd
 }
 
 func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...byte) ([]byte, error) {
@@ -172,6 +188,15 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 				break
 			}
 			switch subCmd {
+			case opt.TERMINAL_TYPE:
+				IS := byte(0)
+				if options[0] != IS {
+					break
+				}
+				if c.Ptmx != nil {
+					return nil, fmt.Errorf("pty already opened")
+				}
+				MakeExecCmd(c, append(os.Environ(), "TERM="+strings.ToLower(string(options[1:]))))
 			case opt.NEGOTIATE_ABOUT_WINDOW_SIZE:
 				if len(options) != 4 {
 					break
@@ -200,8 +225,16 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 			nextStatus = false
 			break
 		}
-		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.DO, subCmd})
-		nextStatus = true
+		if !c.EnableOptions[subCmd] {
+			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.DO, subCmd})
+			nextStatus = true
+		}
+		switch subCmd {
+		case opt.TERMINAL_TYPE:
+			SEND := byte(1)
+			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SB, subCmd, SEND})
+			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SE})
+		}
 	case cmd.WONT:
 		if subCmd == opt.ECHO {
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.WILL, opt.ECHO})
@@ -209,6 +242,13 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 		}
 		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.WONT, subCmd})
 		nextStatus = false
+		switch subCmd {
+		case opt.TERMINAL_TYPE:
+			if c.Ptmx != nil {
+				return nil, fmt.Errorf("pty already opened")
+			}
+			MakeExecCmd(c, append(os.Environ(), "TERM=vt100"))
+		}
 	case cmd.DO:
 		if !c.IsSupportOption(subCmd) {
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.WONT, subCmd})

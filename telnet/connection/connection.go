@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"net"
 	"os"
+	"os/exec"
 	cmd "telnet/command"
 	opt "telnet/option"
 )
@@ -21,7 +22,10 @@ type Connection struct {
 	// Build TELNET Command Response Function
 	BuildCmdRes func(c Connection, mainCmd byte, subCmd byte, options ...byte) ([]byte, error)
 	// pty in TELNET Server
-	Ptmx *os.File
+	Ptmx        *os.File
+	ExecCmdChan chan *exec.Cmd
+	// Channel for error handle
+	ErrChan chan error
 }
 
 func (c *Connection) WriteByte(message byte) error {
@@ -121,7 +125,7 @@ func (c *Connection) IsSupportOption(option byte) bool {
 func (c *Connection) ReqCmds(subCmds []byte) error {
 	bufReqCmds := new(bytes.Buffer)
 	for _, subCmd := range subCmds {
-		if subCmd == opt.ECHO || subCmd == opt.NEGOTIATE_ABOUT_WINDOW_SIZE {
+		if subCmd == opt.ECHO || subCmd == opt.TERMINAL_TYPE || subCmd == opt.NEGOTIATE_ABOUT_WINDOW_SIZE {
 			bufReqCmds.Write([]byte{cmd.IAC, cmd.DO, subCmd})
 			continue
 		}
