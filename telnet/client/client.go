@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	cmd "telnet/command"
 	"telnet/connection"
@@ -163,7 +164,11 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 				bufOptionRes.Write([]byte("38400,38400"))
 				_, err = bufCmdsRes.Write(bufOptionRes.Bytes())
 			case opt.TERMINAL_TYPE:
-				bufOptionRes.Write([]byte("XTERM-256COLOR"))
+				termType := os.Getenv("TERM")
+				if len(termType) == 0 {
+					termType = "VT100"
+				}
+				bufOptionRes.Write([]byte(strings.ToUpper(termType)))
 				_, err = bufCmdsRes.Write(bufOptionRes.Bytes())
 			}
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SE})
