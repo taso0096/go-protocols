@@ -42,6 +42,21 @@ func (s *Server) Handle(ln net.Listener) {
 	}
 	fmt.Printf("Client Connected.\n")
 
+	// Start pty
+	go func() {
+		s.ExecCmdChan = make(chan *exec.Cmd)
+		defer close(s.ExecCmdChan)
+		for execCmd := range s.ExecCmdChan {
+			s.Ptmx, err = pty.Start(execCmd)
+			if err != nil {
+				s.ErrChan <- err
+			}
+			// Relay output from pty to client
+			s.ReadPty()
+		}
+	}()
+
+	// Read client message
 	go func() {
 		defer s.Conn.Close()
 		defer func() {
@@ -56,20 +71,6 @@ func (s *Server) Handle(ln net.Listener) {
 			s.ErrChan <- err
 			return
 		}
-
-		// Start pty
-		s.ExecCmdChan = make(chan *exec.Cmd)
-		defer close(s.ExecCmdChan)
-		go func() {
-			for execCmd := range s.ExecCmdChan {
-				s.Ptmx, err = pty.Start(execCmd)
-				if err != nil {
-					s.ErrChan <- err
-				}
-				// Relay output from pty to client
-				s.ReadPty()
-			}
-		}()
 
 		// Relay input from client to pty
 		for {
