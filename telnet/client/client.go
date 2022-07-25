@@ -73,12 +73,12 @@ func (c *Client) CatchSignal() {
 		case syscall.SIGWINCH:
 			byteNAWSReq, err := BuildCmdRes(c.Connection, cmd.DO, opt.NEGOTIATE_ABOUT_WINDOW_SIZE)
 			if err != nil {
-				log.Fatal("BuildCmdRes Error:", err)
+				c.ErrChan <- err
 			}
 			err = c.WriteBytes(byteNAWSReq)
 		}
 		if err != nil {
-			log.Fatal("Write Error:", err)
+			c.ErrChan <- err
 		}
 	}
 }
@@ -95,21 +95,23 @@ func Init(ip string, port int, supportOptions []byte) Client {
 }
 
 func Run(ip string, port int) {
-	tty, err := tty.Open()
-	if err != nil {
-		log.Fatal("Open Error:", err)
-	}
-	defer tty.Close()
-
 	// Init TELNET Client
 	supportOptions := []byte{opt.ECHO, opt.NEGOTIATE_ABOUT_WINDOW_SIZE, opt.TERMINAL_SPEED, opt.TERMINAL_TYPE, opt.SUPPRESS_GO_AHEAD}
 	c := Init(ip, port, supportOptions)
+	// Handle errors
+	c.ErrChan = make(chan error)
+	defer close(c.ErrChan)
+	go func() {
+		for err := range c.ErrChan {
+			log.Fatalf("Error: %s", err)
+		}
+	}()
 
 	// TCP Call
 	fmt.Printf("Trying %s:%d...\n", ip, port)
-	err = c.Call()
+	err := c.Call()
 	if err != nil {
-		log.Fatal("Call Error:", err)
+		c.ErrChan <- err
 	}
 	defer c.Conn.Close()
 	fmt.Printf("Connected to %s:%d.\n", ip, port)
@@ -117,8 +119,15 @@ func Run(ip string, port int) {
 	// Request TELNET Commands
 	err = c.ReqCmds(supportOptions)
 	if err != nil {
-		log.Fatal("Write Error:", err)
+		c.ErrChan <- err
 	}
+
+	// Open tty
+	tty, err := tty.Open()
+	if err != nil {
+		c.ErrChan <- err
+	}
+	defer tty.Close()
 
 	// Catch signal
 	go c.CatchSignal()
@@ -132,7 +141,7 @@ func Run(ip string, port int) {
 			fmt.Println("Connection closed by foreign host.")
 			os.Exit(0)
 		} else if err != nil {
-			log.Fatal("Read Error:", err)
+			c.ErrChan <- err
 		}
 		if byteMessage != nil {
 			fmt.Print(string(byteMessage))
