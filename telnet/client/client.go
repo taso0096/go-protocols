@@ -1,16 +1,13 @@
 package client
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
 	cmd "telnet/command"
@@ -24,13 +21,6 @@ import (
 type Client struct {
 	connection.Connection
 	InputLength int
-}
-
-func (c *Client) Dial() error {
-	conn, err := net.Dial("tcp", c.IP+":"+strconv.Itoa(c.Port))
-	c.Conn = conn
-	c.Reader = bufio.NewReader(conn)
-	return err
 }
 
 func (c *Client) Call() {
@@ -137,7 +127,7 @@ func Run(ip string, port int) {
 	defer close(c.ErrChan)
 	go func() {
 		for err := range c.ErrChan {
-			log.Fatalf("Error: %s", err)
+			log.Fatal("Error:", err)
 		}
 	}()
 

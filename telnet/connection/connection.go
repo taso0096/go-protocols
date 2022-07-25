@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	cmd "telnet/command"
 	opt "telnet/option"
 )
@@ -27,6 +28,26 @@ type Connection struct {
 	ExecCmdChan chan *exec.Cmd
 	// Channel for error handle
 	ErrChan chan error
+}
+
+func (c *Connection) Accept(ln net.Listener) error {
+	conn, err := ln.Accept()
+	if err != nil {
+		return err
+	}
+	c.Conn = conn
+	c.Reader = bufio.NewReader(conn)
+	return nil
+}
+
+func (c *Connection) Dial() error {
+	conn, err := net.Dial("tcp", c.IP+":"+strconv.Itoa(c.Port))
+	if err != nil {
+		return err
+	}
+	c.Conn = conn
+	c.Reader = bufio.NewReader(conn)
+	return nil
 }
 
 func (c *Connection) WriteByte(message byte) error {

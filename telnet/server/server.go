@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
@@ -22,16 +21,6 @@ import (
 type Server struct {
 	connection.Connection
 	BufEchoMessage bytes.Buffer
-}
-
-func (s *Server) Accept(ln net.Listener) error {
-	conn, err := ln.Accept()
-	if err != nil {
-		return err
-	}
-	s.Conn = conn
-	s.Reader = bufio.NewReader(conn)
-	return nil
 }
 
 func (s *Server) Handle(ln net.Listener) {
@@ -149,7 +138,7 @@ func Run(ip string, port int) {
 	// Listen TCP
 	ln, err := net.Listen("tcp", ip+":"+strconv.Itoa(port))
 	if err != nil {
-		log.Fatal("Listen Error:", err)
+		log.Fatal("Error:", err)
 	}
 	defer ln.Close()
 	fmt.Printf("Listen on %s:%d...\n", ip, port)
@@ -159,7 +148,7 @@ func Run(ip string, port int) {
 	defer close(errChan)
 	go func() {
 		for err := range errChan {
-			log.Println("Handle Error:", err)
+			log.Println("Error:", err)
 		}
 	}()
 
