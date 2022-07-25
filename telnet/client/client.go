@@ -26,11 +26,45 @@ type Client struct {
 	InputLength int
 }
 
-func (c *Client) Call() error {
+func (c *Client) Dial() error {
 	conn, err := net.Dial("tcp", c.IP+":"+strconv.Itoa(c.Port))
 	c.Conn = conn
 	c.Reader = bufio.NewReader(conn)
 	return err
+}
+
+func (c *Client) Call() {
+	// Request TELNET Commands
+	err := c.ReqCmds(c.SupportOptions)
+	if err != nil {
+		c.ErrChan <- err
+	}
+
+	// Open tty
+	tty, err := tty.Open()
+	if err != nil {
+		c.ErrChan <- err
+	}
+	defer tty.Close()
+
+	// Catch signal
+	go c.CatchSignal()
+	// Scan key input and write message
+	go c.ScanAndWrite(tty)
+
+	// Read server message
+	for {
+		byteMessage, err := c.ReadMessage()
+		if err == io.EOF {
+			fmt.Println("Connection closed by foreign host.")
+			os.Exit(0)
+		} else if err != nil {
+			c.ErrChan <- err
+		}
+		if byteMessage != nil {
+			fmt.Print(string(byteMessage))
+		}
+	}
 }
 
 func (c *Client) ScanAndWrite(tty *tty.TTY) error {
@@ -107,46 +141,17 @@ func Run(ip string, port int) {
 		}
 	}()
 
-	// TCP Call
+	// TCP Dial
 	fmt.Printf("Trying %s:%d...\n", ip, port)
-	err := c.Call()
+	err := c.Dial()
 	if err != nil {
 		c.ErrChan <- err
 	}
 	defer c.Conn.Close()
 	fmt.Printf("Connected to %s:%d.\n", ip, port)
 
-	// Request TELNET Commands
-	err = c.ReqCmds(supportOptions)
-	if err != nil {
-		c.ErrChan <- err
-	}
-
-	// Open tty
-	tty, err := tty.Open()
-	if err != nil {
-		c.ErrChan <- err
-	}
-	defer tty.Close()
-
-	// Catch signal
-	go c.CatchSignal()
-	// Scan key input and write message
-	go c.ScanAndWrite(tty)
-
-	// Read server message
-	for {
-		byteMessage, err := c.ReadMessage()
-		if err == io.EOF {
-			fmt.Println("Connection closed by foreign host.")
-			os.Exit(0)
-		} else if err != nil {
-			c.ErrChan <- err
-		}
-		if byteMessage != nil {
-			fmt.Print(string(byteMessage))
-		}
-	}
+	// TELNET Call
+	c.Call()
 }
 
 func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...byte) ([]byte, error) {
