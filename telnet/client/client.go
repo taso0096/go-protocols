@@ -15,7 +15,7 @@ import (
 	opt "telnet/option"
 
 	"github.com/mattn/go-tty"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/sys/unix"
 )
 
 type Client struct {
@@ -36,6 +36,7 @@ func (c *Client) Call() {
 		c.ErrChan <- err
 	}
 	defer tty.Close()
+	c.Ptmx = tty.Input()
 
 	// Catch signal
 	go c.CatchSignal()
@@ -209,10 +210,10 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 		}
 		switch subCmd {
 		case opt.NEGOTIATE_ABOUT_WINDOW_SIZE:
-			width, hight, _ := terminal.GetSize(syscall.Stdin)
+			ws, _ := unix.IoctlGetWinsize(int(c.Ptmx.Fd()), unix.TIOCGWINSZ)
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SB, opt.NEGOTIATE_ABOUT_WINDOW_SIZE})
-			binary.Write(bufCmdsRes, binary.BigEndian, int16(width))
-			binary.Write(bufCmdsRes, binary.BigEndian, int16(hight))
+			binary.Write(bufCmdsRes, binary.BigEndian, ws.Col)
+			binary.Write(bufCmdsRes, binary.BigEndian, ws.Row)
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SE})
 		}
 	case cmd.DONT:
