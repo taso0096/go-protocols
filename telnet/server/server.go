@@ -36,7 +36,7 @@ func (s *Server) Handle(ln net.Listener) {
 		s.ExecCmdChan = make(chan *exec.Cmd)
 		defer close(s.ExecCmdChan)
 		for execCmd := range s.ExecCmdChan {
-			s.Ptmx, err = pty.Start(execCmd)
+			s.StdFile, err = pty.Start(execCmd)
 			if err != nil {
 				s.ErrChan <- err
 			}
@@ -49,8 +49,8 @@ func (s *Server) Handle(ln net.Listener) {
 	go func() {
 		defer s.Conn.Close()
 		defer func() {
-			if s.Ptmx != nil {
-				s.Ptmx.Close()
+			if s.StdFile != nil {
+				s.StdFile.Close()
 			}
 		}()
 
@@ -74,8 +74,8 @@ func (s *Server) Handle(ln net.Listener) {
 			if !s.EnableOptions[opt.ECHO] {
 				s.BufEchoMessage.Write(byteMessage)
 			}
-			if s.Ptmx != nil {
-				s.Ptmx.Write(byteMessage)
+			if s.StdFile != nil {
+				s.StdFile.Write(byteMessage)
 			}
 		}
 	}()
@@ -85,7 +85,7 @@ func (s *Server) ReadPty() {
 	startIndex := 0
 	byteResult := make([]byte, 4096)
 	for {
-		n, err := s.Ptmx.Read(byteResult)
+		n, err := s.StdFile.Read(byteResult)
 		if err != nil {
 			s.ErrChan <- err
 			s.Conn.Close()
@@ -186,7 +186,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 				if options[0] != IS {
 					break
 				}
-				if c.Ptmx != nil {
+				if c.StdFile != nil {
 					return nil, fmt.Errorf("pty already opened")
 				}
 				MakeExecCmd(c, append(os.Environ(), "TERM="+strings.ToLower(string(options[1:]))))
@@ -194,7 +194,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 				if len(options) != 4 {
 					break
 				}
-				err := pty.Setsize(c.Ptmx, &pty.Winsize{
+				err := pty.Setsize(c.StdFile, &pty.Winsize{
 					Rows: binary.BigEndian.Uint16(options[2:4]),
 					Cols: binary.BigEndian.Uint16(options[0:2]),
 				})
@@ -237,7 +237,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 		nextStatus = false
 		switch subCmd {
 		case opt.TERMINAL_TYPE:
-			if c.Ptmx != nil {
+			if c.StdFile != nil {
 				return nil, fmt.Errorf("pty already opened")
 			}
 			MakeExecCmd(c, append(os.Environ(), "TERM=vt100"))

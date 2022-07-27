@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
@@ -14,9 +15,9 @@ import (
 	cmd "telnet/command"
 	"telnet/connection"
 	opt "telnet/option"
+	"telnet/terminal"
 
 	"github.com/mattn/go-tty"
-	"golang.org/x/sys/unix"
 )
 
 type Client struct {
@@ -37,12 +38,12 @@ func (c *Client) Call() {
 		c.ErrChan <- err
 	}
 	defer tty.Close()
-	c.Ptmx = tty.Input()
+	c.Terminal = terminal.NewFromTty(tty)
 
 	// Catch signal
 	go c.CatchSignal()
 	// Scan key input and write message
-	go c.ScanAndWrite(tty)
+	go c.ScanAndWrite()
 
 	// Read server message
 	for {
@@ -59,10 +60,11 @@ func (c *Client) Call() {
 	}
 }
 
-func (c *Client) ScanAndWrite(tty *tty.TTY) error {
+func (c *Client) ScanAndWrite() error {
+	ttyReader := bufio.NewReader(c.StdFile)
 	c.InputLength = 0
 	for {
-		r, err := tty.ReadRune()
+		r, _, err := ttyReader.ReadRune()
 		if err != nil {
 			return err
 		}
@@ -167,15 +169,10 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 			bufOptionRes := bytes.NewBuffer([]byte{cmd.IAC, cmd.SB, subCmd, IS})
 			switch subCmd {
 			case opt.TERMINAL_SPEED:
-				termios, _ := unix.IoctlGetTermios(int(c.Ptmx.Fd()), unix.TIOCGETA)
-				bufOptionRes.Write([]byte(strconv.Itoa(int(termios.Ospeed)) + "," + strconv.Itoa(int(termios.Ispeed))))
+				bufOptionRes.Write([]byte(strconv.Itoa(int(c.Terminal.Termios.Ospeed)) + "," + strconv.Itoa(int(c.Terminal.Termios.Ispeed))))
 				_, err = bufCmdsRes.Write(bufOptionRes.Bytes())
 			case opt.TERMINAL_TYPE:
-				termType := os.Getenv("TERM")
-				if len(termType) == 0 {
-					termType = "VT100"
-				}
-				bufOptionRes.Write([]byte(strings.ToUpper(termType)))
+				bufOptionRes.Write([]byte(strings.ToUpper(c.Type)))
 				_, err = bufCmdsRes.Write(bufOptionRes.Bytes())
 			}
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SE})
@@ -212,10 +209,11 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 		}
 		switch subCmd {
 		case opt.NEGOTIATE_ABOUT_WINDOW_SIZE:
-			ws, _ := unix.IoctlGetWinsize(int(c.Ptmx.Fd()), unix.TIOCGWINSZ)
+			height, width, _ := c.GetSize()
+			log.Println(width, height)
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SB, opt.NEGOTIATE_ABOUT_WINDOW_SIZE})
-			binary.Write(bufCmdsRes, binary.BigEndian, ws.Col)
-			binary.Write(bufCmdsRes, binary.BigEndian, ws.Row)
+			binary.Write(bufCmdsRes, binary.BigEndian, int16(width))
+			binary.Write(bufCmdsRes, binary.BigEndian, int16(height))
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SE})
 		}
 	case cmd.DONT:
