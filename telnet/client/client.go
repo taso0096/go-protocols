@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	cmd "telnet/command"
@@ -166,7 +167,8 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 			bufOptionRes := bytes.NewBuffer([]byte{cmd.IAC, cmd.SB, subCmd, IS})
 			switch subCmd {
 			case opt.TERMINAL_SPEED:
-				bufOptionRes.Write([]byte("38400,38400"))
+				termios, _ := unix.IoctlGetTermios(int(c.Ptmx.Fd()), unix.TIOCGETA)
+				bufOptionRes.Write([]byte(strconv.Itoa(int(termios.Ospeed)) + "," + strconv.Itoa(int(termios.Ispeed))))
 				_, err = bufCmdsRes.Write(bufOptionRes.Bytes())
 			case opt.TERMINAL_TYPE:
 				termType := os.Getenv("TERM")
