@@ -129,16 +129,6 @@ func (c *Connection) ReadMessage() ([]byte, error) {
 	return bufMessage.Bytes(), err
 }
 
-func (c *Connection) ReadByte() (byte, error) {
-	return c.Reader.ReadByte()
-}
-
-func (c *Connection) ReadBytes(length int) ([]byte, error) {
-	message := make([]byte, length)
-	n, err := c.Reader.Read(message)
-	return message[:n], err
-}
-
 func (c *Connection) ReadAll() ([]byte, error) {
 	message := make([]byte, c.Reader.Size())
 	n, err := c.Reader.Read(message)
