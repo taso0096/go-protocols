@@ -7,8 +7,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	cmd "telnet/command"
@@ -28,15 +26,15 @@ func (s *Server) Handle(ln net.Listener) {
 		s.ErrChan <- err
 		return
 	}
-	fmt.Printf("Client Connected.\n")
+	log.Println("Client Connected")
 
 	// Start pty
 	s.Terminal = terminal.New()
 	go func() {
-		s.ExecCmdChan = make(chan *exec.Cmd)
-		defer close(s.ExecCmdChan)
-		for execCmd := range s.ExecCmdChan {
-			err = s.Terminal.StartPty(execCmd)
+		s.Terminal.EnvChan = make(chan []string)
+		defer close(s.Terminal.EnvChan)
+		for env := range s.Terminal.EnvChan {
+			err = s.Terminal.StartPty(env)
 			if err != nil {
 				s.ErrChan <- err
 			}
@@ -70,9 +68,7 @@ func (s *Server) Handle(ln net.Listener) {
 			if !s.EnableOptions[opt.ECHO] {
 				s.BufEchoMessage.Write(byteMessage)
 			}
-			if s.Terminal.StdFile != nil {
-				s.Terminal.StdFile.Write(byteMessage)
-			}
+			s.Terminal.Write(byteMessage)
 		}
 	}()
 }
@@ -81,7 +77,7 @@ func (s *Server) ReadPty() {
 	startIndex := 0
 	byteResult := make([]byte, 4096)
 	for {
-		n, err := s.Terminal.StdFile.Read(byteResult)
+		n, err := s.Terminal.Read(byteResult)
 		if err != nil {
 			s.ErrChan <- err
 			s.Conn.Close()
@@ -157,12 +153,6 @@ func Run(ip string, port int) {
 	}
 }
 
-func MakeExecCmd(c connection.Connection, env []string) {
-	execCmd := exec.Command("login")
-	execCmd.Env = env
-	c.ExecCmdChan <- execCmd
-}
-
 func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...byte) ([]byte, error) {
 	var err error
 	bufCmdsRes := new(bytes.Buffer)
@@ -185,7 +175,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 				if c.Terminal.StdFile != nil {
 					return nil, fmt.Errorf("pty already opened")
 				}
-				MakeExecCmd(c, append(os.Environ(), "TERM="+strings.ToLower(string(options[1:]))))
+				c.Terminal.SetType(strings.ToLower(string(options[1:])))
 			case opt.NEGOTIATE_ABOUT_WINDOW_SIZE:
 				if len(options) != 4 {
 					break
@@ -242,7 +232,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 			if c.Terminal.StdFile != nil {
 				return nil, fmt.Errorf("pty already opened")
 			}
-			MakeExecCmd(c, append(os.Environ(), "TERM=vt100"))
+			c.Terminal.SetType("vt100")
 		}
 	case cmd.DO:
 		if !c.IsSupportOption(subCmd) {

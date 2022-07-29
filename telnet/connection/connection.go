@@ -4,11 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"net"
-	"os/exec"
 	"strconv"
 	cmd "telnet/command"
 	opt "telnet/option"
-
 	"telnet/terminal"
 )
 
@@ -24,8 +22,6 @@ type Connection struct {
 	EnableOptions  map[byte]bool
 	// Build TELNET Command Response Function
 	BuildCmdRes func(c Connection, mainCmd byte, subCmd byte, options ...byte) ([]byte, error)
-	// exec.Cmd for pty
-	ExecCmdChan chan *exec.Cmd
 	// Channel for error handle
 	ErrChan chan error
 	// Terminal Config

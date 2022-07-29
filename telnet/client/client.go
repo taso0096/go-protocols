@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
@@ -59,10 +58,9 @@ func (c *Client) Call() {
 }
 
 func (c *Client) ScanAndWrite() {
-	ttyReader := bufio.NewReader(c.Terminal.StdFile)
 	c.InputLength = 0
 	for {
-		r, _, err := ttyReader.ReadRune()
+		r, _, err := c.Terminal.ReadRune()
 		if err != nil {
 			c.ErrChan <- err
 			return
@@ -131,7 +129,7 @@ func Run(ip string, port int) {
 	defer close(c.ErrChan)
 	go func() {
 		for err := range c.ErrChan {
-			log.Fatal("Error:", err)
+			log.Fatalln("Error:", err)
 		}
 	}()
 

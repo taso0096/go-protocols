@@ -1,10 +1,11 @@
 package terminal
 
 import (
+	"bufio"
+	"fmt"
 	"os"
 	"os/exec"
 	"reflect"
-	"strings"
 
 	"github.com/creack/pty"
 	"github.com/mattn/go-tty"
@@ -20,6 +21,7 @@ type Terminal struct {
 	StdFile *os.File
 	Termios unix.Termios
 	Type    string
+	EnvChan chan []string
 	// go-tty
 	tty *tty.TTY
 	// Window Size
@@ -28,6 +30,8 @@ type Terminal struct {
 	// Baud Rate
 	ispeed int
 	ospeed int
+	// StdFile Reader
+	reader *bufio.Reader
 }
 
 func (t *Terminal) OpenTty() error {
@@ -40,19 +44,22 @@ func (t *Terminal) OpenTty() error {
 		t.Type = "VT100"
 	}
 	t.tty = tty
-	t.StdFile = tty.Input() // stdin
+	t.StdFile = tty.Input() // StdIn
+	t.reader = bufio.NewReader(t.StdFile)
 	termios.Tcgetattr(tty.Input().Fd(), &t.Termios)
 	return nil
 }
 
-func (t *Terminal) StartPty(execCmd *exec.Cmd) error {
+func (t *Terminal) StartPty(env []string) error {
+	execCmd := exec.Command("login")
+	execCmd.Env = env
 	ptmx, err := pty.Start(execCmd)
 	if err != nil {
 		return err
 	}
-	t.StdFile = ptmx // stdin + stdout + stderr
+	t.StdFile = ptmx // StdIn + StdOut + StdErr
+	t.reader = bufio.NewReader(t.StdFile)
 	termios.Tcgetattr(t.StdFile.Fd(), &t.Termios)
-	t.Type = strings.Split(execCmd.Env[len(execCmd.Env)-1], "=")[1]
 	if t.width > 0 && t.height > 0 {
 		t.setsize()
 	}
@@ -62,7 +69,12 @@ func (t *Terminal) StartPty(execCmd *exec.Cmd) error {
 	return nil
 }
 
-func (t *Terminal) GetSize() (int, int, error) {
+func (t *Terminal) SetType(terminalType string) {
+	t.Type = terminalType
+	t.EnvChan <- append(os.Environ(), "TERM="+terminalType)
+}
+
+func (t *Terminal) GetSize() (height int, width int, err error) {
 	return pty.Getsize(t.StdFile)
 }
 
@@ -108,4 +120,25 @@ func (t *Terminal) Close() error {
 		err = t.StdFile.Close()
 	}
 	return err
+}
+
+func (t *Terminal) Read(p []byte) (n int, err error) {
+	if t.reader == nil {
+		return 0, fmt.Errorf("Not set bufio.Reader in Terminal")
+	}
+	return t.reader.Read(p)
+}
+
+func (t *Terminal) ReadRune() (r rune, size int, err error) {
+	if t.reader == nil {
+		return 0, 0, fmt.Errorf("Not set bufio.Reader in Terminal")
+	}
+	return t.reader.ReadRune()
+}
+
+func (t *Terminal) Write(b []byte) (n int, err error) {
+	if t.StdFile == nil {
+		return 0, fmt.Errorf("Not set StdFile in Terminal")
+	}
+	return t.StdFile.Write(b)
 }
