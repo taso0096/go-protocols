@@ -16,8 +16,6 @@ import (
 	"telnet/connection"
 	opt "telnet/option"
 	"telnet/terminal"
-
-	"github.com/mattn/go-tty"
 )
 
 type Client struct {
@@ -33,12 +31,12 @@ func (c *Client) Call() {
 	}
 
 	// Open tty
-	tty, err := tty.Open()
+	c.Terminal = terminal.New()
+	err = c.Terminal.OpenTty()
 	if err != nil {
 		c.ErrChan <- err
 	}
-	defer tty.Close()
-	c.Terminal = terminal.NewFromTty(tty)
+	defer c.Terminal.Close()
 
 	// Catch signal
 	go c.CatchSignal()
@@ -61,7 +59,7 @@ func (c *Client) Call() {
 }
 
 func (c *Client) ScanAndWrite() error {
-	ttyReader := bufio.NewReader(c.StdFile)
+	ttyReader := bufio.NewReader(c.Terminal.StdFile)
 	c.InputLength = 0
 	for {
 		r, _, err := ttyReader.ReadRune()
@@ -111,8 +109,8 @@ func (c *Client) CatchSignal() {
 	}
 }
 
-func Init(ip string, port int, supportOptions []byte) Client {
-	c := *new(Client)
+func New(ip string, port int, supportOptions []byte) *Client {
+	c := new(Client)
 	c.IP = ip
 	c.Port = port
 	c.EnableOptions = map[byte]bool{}
@@ -123,9 +121,9 @@ func Init(ip string, port int, supportOptions []byte) Client {
 }
 
 func Run(ip string, port int) {
-	// Init TELNET Client
+	// New TELNET Client
 	supportOptions := []byte{opt.ECHO, opt.NEGOTIATE_ABOUT_WINDOW_SIZE, opt.TERMINAL_SPEED, opt.TERMINAL_TYPE, opt.SUPPRESS_GO_AHEAD}
-	c := Init(ip, port, supportOptions)
+	c := New(ip, port, supportOptions)
 	// Handle errors
 	c.ErrChan = make(chan error)
 	defer close(c.ErrChan)
@@ -172,7 +170,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 				bufOptionRes.Write([]byte(strconv.Itoa(int(c.Terminal.Termios.Ospeed)) + "," + strconv.Itoa(int(c.Terminal.Termios.Ispeed))))
 				_, err = bufCmdsRes.Write(bufOptionRes.Bytes())
 			case opt.TERMINAL_TYPE:
-				bufOptionRes.Write([]byte(strings.ToUpper(c.Type)))
+				bufOptionRes.Write([]byte(strings.ToUpper(c.Terminal.Type)))
 				_, err = bufCmdsRes.Write(bufOptionRes.Bytes())
 			}
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SE})
@@ -209,8 +207,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 		}
 		switch subCmd {
 		case opt.NEGOTIATE_ABOUT_WINDOW_SIZE:
-			height, width, _ := c.GetSize()
-			log.Println(width, height)
+			height, width, _ := c.Terminal.GetSize()
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SB, opt.NEGOTIATE_ABOUT_WINDOW_SIZE})
 			binary.Write(bufCmdsRes, binary.BigEndian, int16(width))
 			binary.Write(bufCmdsRes, binary.BigEndian, int16(height))

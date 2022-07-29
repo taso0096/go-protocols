@@ -29,7 +29,7 @@ type Connection struct {
 	// Channel for error handle
 	ErrChan chan error
 	// Terminal Config
-	terminal.Terminal
+	Terminal *terminal.Terminal
 }
 
 func (c *Connection) Accept(ln net.Listener) error {
@@ -150,7 +150,7 @@ func (c *Connection) ReqCmds(subCmds []byte) error {
 	bufReqCmds := new(bytes.Buffer)
 	for _, subCmd := range subCmds {
 		if c.IsServer {
-			if subCmd == opt.ECHO || subCmd == opt.TERMINAL_TYPE || subCmd == opt.NEGOTIATE_ABOUT_WINDOW_SIZE {
+			if subCmd == opt.ECHO || subCmd == opt.TERMINAL_TYPE || subCmd == opt.NEGOTIATE_ABOUT_WINDOW_SIZE || subCmd == opt.TERMINAL_SPEED {
 				bufReqCmds.Write([]byte{cmd.IAC, cmd.DO, subCmd})
 				continue
 			}

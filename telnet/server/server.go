@@ -14,8 +14,7 @@ import (
 	cmd "telnet/command"
 	"telnet/connection"
 	opt "telnet/option"
-
-	"github.com/creack/pty"
+	"telnet/terminal"
 )
 
 type Server struct {
@@ -32,11 +31,12 @@ func (s *Server) Handle(ln net.Listener) {
 	fmt.Printf("Client Connected.\n")
 
 	// Start pty
+	s.Terminal = terminal.New()
 	go func() {
 		s.ExecCmdChan = make(chan *exec.Cmd)
 		defer close(s.ExecCmdChan)
 		for execCmd := range s.ExecCmdChan {
-			s.StdFile, err = pty.Start(execCmd)
+			err = s.Terminal.StartPty(execCmd)
 			if err != nil {
 				s.ErrChan <- err
 			}
@@ -48,11 +48,7 @@ func (s *Server) Handle(ln net.Listener) {
 	// Read client message
 	go func() {
 		defer s.Conn.Close()
-		defer func() {
-			if s.StdFile != nil {
-				s.StdFile.Close()
-			}
-		}()
+		defer s.Terminal.Close()
 
 		// Request TELNET Commands
 		err = s.ReqCmds(s.SupportOptions)
@@ -74,8 +70,8 @@ func (s *Server) Handle(ln net.Listener) {
 			if !s.EnableOptions[opt.ECHO] {
 				s.BufEchoMessage.Write(byteMessage)
 			}
-			if s.StdFile != nil {
-				s.StdFile.Write(byteMessage)
+			if s.Terminal.StdFile != nil {
+				s.Terminal.StdFile.Write(byteMessage)
 			}
 		}
 	}()
@@ -85,7 +81,7 @@ func (s *Server) ReadPty() {
 	startIndex := 0
 	byteResult := make([]byte, 4096)
 	for {
-		n, err := s.StdFile.Read(byteResult)
+		n, err := s.Terminal.StdFile.Read(byteResult)
 		if err != nil {
 			s.ErrChan <- err
 			s.Conn.Close()
@@ -122,8 +118,8 @@ func (s *Server) ReadPty() {
 	}
 }
 
-func Init(ip string, port int, supportOptions []byte) Server {
-	s := *new(Server)
+func New(ip string, port int, supportOptions []byte) *Server {
+	s := new(Server)
 	s.IsServer = true
 	s.IP = ip
 	s.Port = port
@@ -153,9 +149,9 @@ func Run(ip string, port int) {
 	}()
 
 	// Handle connections
-	supportOptions := []byte{opt.ECHO, opt.SUPPRESS_GO_AHEAD, opt.TERMINAL_TYPE, opt.NEGOTIATE_ABOUT_WINDOW_SIZE}
+	supportOptions := []byte{opt.ECHO, opt.SUPPRESS_GO_AHEAD, opt.TERMINAL_TYPE, opt.NEGOTIATE_ABOUT_WINDOW_SIZE, opt.TERMINAL_SPEED}
 	for {
-		s := Init(ip, port, supportOptions)
+		s := New(ip, port, supportOptions)
 		s.ErrChan = errChan
 		s.Handle(ln)
 	}
@@ -186,7 +182,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 				if options[0] != IS {
 					break
 				}
-				if c.StdFile != nil {
+				if c.Terminal.StdFile != nil {
 					return nil, fmt.Errorf("pty already opened")
 				}
 				MakeExecCmd(c, append(os.Environ(), "TERM="+strings.ToLower(string(options[1:]))))
@@ -194,13 +190,19 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 				if len(options) != 4 {
 					break
 				}
-				err := pty.Setsize(c.StdFile, &pty.Winsize{
-					Rows: binary.BigEndian.Uint16(options[2:4]),
-					Cols: binary.BigEndian.Uint16(options[0:2]),
-				})
+				err := c.Terminal.SetSize(binary.BigEndian.Uint16(options[0:2]), binary.BigEndian.Uint16(options[2:4]))
 				if err != nil {
 					return nil, err
 				}
+			case opt.TERMINAL_SPEED:
+				IS := byte(0)
+				if options[0] != IS {
+					break
+				}
+				speeds := strings.Split(string(options[1:]), ",")
+				ospeed, _ := strconv.Atoi(speeds[0])
+				ispeed, _ := strconv.Atoi(speeds[1])
+				c.Terminal.SetSpeed(ospeed, ispeed)
 			}
 		}
 
@@ -223,7 +225,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 			nextStatus = true
 		}
 		switch subCmd {
-		case opt.TERMINAL_TYPE:
+		case opt.TERMINAL_TYPE, opt.TERMINAL_SPEED:
 			SEND := byte(1)
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SB, subCmd, SEND})
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SE})
@@ -237,7 +239,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 		nextStatus = false
 		switch subCmd {
 		case opt.TERMINAL_TYPE:
-			if c.StdFile != nil {
+			if c.Terminal.StdFile != nil {
 				return nil, fmt.Errorf("pty already opened")
 			}
 			MakeExecCmd(c, append(os.Environ(), "TERM=vt100"))
