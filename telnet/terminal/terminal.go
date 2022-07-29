@@ -6,24 +6,17 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"syscall"
 
-	"github.com/creack/pty"
-	"github.com/mattn/go-tty"
 	"github.com/pkg/term/termios"
 	"golang.org/x/sys/unix"
 )
-
-func New() *Terminal {
-	return new(Terminal)
-}
 
 type Terminal struct {
 	StdFile *os.File
 	Termios unix.Termios
 	Type    string
 	EnvChan chan []string
-	// go-tty
-	tty *tty.TTY
 	// Window Size
 	width  uint16
 	height uint16
@@ -34,8 +27,12 @@ type Terminal struct {
 	reader *bufio.Reader
 }
 
+func New() *Terminal {
+	return new(Terminal)
+}
+
 func (t *Terminal) OpenTty() error {
-	tty, err := tty.Open()
+	ttyStdin, err := os.Open("/dev/tty")
 	if err != nil {
 		return err
 	}
@@ -43,21 +40,32 @@ func (t *Terminal) OpenTty() error {
 	if len(t.Type) == 0 {
 		t.Type = "VT100"
 	}
-	t.tty = tty
-	t.StdFile = tty.Input() // StdIn
+	t.StdFile = ttyStdin // Stdin
 	t.reader = bufio.NewReader(t.StdFile)
-	termios.Tcgetattr(tty.Input().Fd(), &t.Termios)
+	termios.Tcgetattr(t.StdFile.Fd(), &t.Termios)
+	t.setRawMode()
 	return nil
 }
 
 func (t *Terminal) StartPty(env []string) error {
-	execCmd := exec.Command("login")
-	execCmd.Env = env
-	ptmx, err := pty.Start(execCmd)
+	// Set OS command for login
+	cmd := exec.Command("login")
+	cmd.Env = env
+	// Open pty
+	pty, tty, err := termios.Pty()
 	if err != nil {
 		return err
 	}
-	t.StdFile = ptmx // StdIn + StdOut + StdErr
+	defer tty.Close()
+	cmd.Stdin = tty
+	cmd.Stdout = tty
+	cmd.Stderr = tty
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid:  true,
+		Setctty: true,
+	}
+
+	t.StdFile = pty // Stdin + Stdout + Stderr
 	t.reader = bufio.NewReader(t.StdFile)
 	termios.Tcgetattr(t.StdFile.Fd(), &t.Termios)
 	if t.width > 0 && t.height > 0 {
@@ -66,7 +74,21 @@ func (t *Terminal) StartPty(env []string) error {
 	if t.ospeed > 0 && t.ispeed > 0 {
 		t.setspeed()
 	}
-	return nil
+
+	err = cmd.Start()
+	if err != nil {
+		pty.Close()
+	}
+	return err
+}
+
+// Modifies termios for raw mode
+func (t *Terminal) setRawMode() {
+	t.Termios.Iflag &^= unix.ISTRIP | unix.INLCR | unix.ICRNL | unix.IGNCR | unix.IXOFF
+	t.Termios.Lflag &^= unix.ECHO | unix.ICANON
+	t.Termios.Cc[unix.VMIN] = 1
+	t.Termios.Cc[unix.VTIME] = 0
+	termios.Tcsetattr(t.StdFile.Fd(), termios.TCSANOW, &t.Termios)
 }
 
 func (t *Terminal) SetType(terminalType string) {
@@ -75,7 +97,11 @@ func (t *Terminal) SetType(terminalType string) {
 }
 
 func (t *Terminal) GetSize() (height int, width int, err error) {
-	return pty.Getsize(t.StdFile)
+	ws, err := unix.IoctlGetWinsize(int(t.StdFile.Fd()), unix.TIOCGWINSZ)
+	if err != nil {
+		return 0, 0, err
+	}
+	return int(ws.Row), int(ws.Col), nil
 }
 
 func (t *Terminal) SetSize(width uint16, height uint16) error {
@@ -88,9 +114,9 @@ func (t *Terminal) setsize() error {
 	if t.StdFile == nil {
 		return nil
 	}
-	err := pty.Setsize(t.StdFile, &pty.Winsize{
-		Rows: t.height,
-		Cols: t.width,
+	err := unix.IoctlSetWinsize(int(t.StdFile.Fd()), unix.TIOCSWINSZ, &unix.Winsize{
+		Row: t.height,
+		Col: t.width,
 	})
 	return err
 }
@@ -105,21 +131,20 @@ func (t *Terminal) setspeed() {
 	if t.StdFile == nil {
 		return
 	}
+	// To support both 32bit and 64bit
 	ospeedRv := reflect.ValueOf(&t.Termios.Ospeed)
 	ispeedRv := reflect.ValueOf(&t.Termios.Ispeed)
 	ospeedRv.Elem().SetUint(uint64(t.ispeed))
 	ispeedRv.Elem().SetUint(uint64(t.ispeed))
+	// Set new termios to StdFile
 	termios.Tcsetattr(t.StdFile.Fd(), termios.TCSANOW, &t.Termios)
 }
 
 func (t *Terminal) Close() error {
-	var err error
-	if t.tty != nil {
-		err = t.tty.Close()
-	} else if t.StdFile != nil {
-		err = t.StdFile.Close()
+	if t.StdFile != nil {
+		return t.StdFile.Close()
 	}
-	return err
+	return nil
 }
 
 func (t *Terminal) Read(p []byte) (n int, err error) {

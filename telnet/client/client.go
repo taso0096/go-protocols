@@ -45,11 +45,9 @@ func (c *Client) Call() {
 	// Read server message
 	for {
 		byteMessage, err := c.ReadMessage()
-		if err == io.EOF {
-			fmt.Println("Connection closed by foreign host.")
-			os.Exit(0)
-		} else if err != nil {
+		if err != nil {
 			c.ErrChan <- err
+			return
 		}
 		if byteMessage != nil {
 			fmt.Print(string(byteMessage))
@@ -124,26 +122,30 @@ func Run(ip string, port int) {
 	// New TELNET Client
 	supportOptions := []byte{opt.ECHO, opt.NEGOTIATE_ABOUT_WINDOW_SIZE, opt.TERMINAL_SPEED, opt.TERMINAL_TYPE, opt.SUPPRESS_GO_AHEAD}
 	c := New(ip, port, supportOptions)
-	// Handle errors
-	c.ErrChan = make(chan error)
-	defer close(c.ErrChan)
-	go func() {
-		for err := range c.ErrChan {
-			log.Fatalln("Error:", err)
-		}
-	}()
 
 	// TCP Dial
 	fmt.Printf("Trying %s:%d...\n", ip, port)
 	err := c.Dial()
 	if err != nil {
-		c.ErrChan <- err
+		log.Fatalln("Error:", err)
 	}
 	defer c.Conn.Close()
 	fmt.Printf("Connected to %s:%d.\n", ip, port)
 
 	// TELNET Call
-	c.Call()
+	go c.Call()
+
+	// Handle errors
+	c.ErrChan = make(chan error)
+	defer close(c.ErrChan)
+	for err := range c.ErrChan {
+		if err == io.EOF {
+			fmt.Println("Connection closed by foreign host.")
+		} else {
+			log.Fatalln("Error:", err)
+		}
+		return
+	}
 }
 
 func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...byte) ([]byte, error) {
