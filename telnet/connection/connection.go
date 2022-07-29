@@ -87,6 +87,9 @@ func (c *Connection) ReadMessage() ([]byte, error) {
 				continue
 			case cmd.SE:
 				byteCmdRes, err = c.BuildCmdRes(*c, cmd.SB, subCmd, byteMessage[optionStartIndex:i-1]...)
+				if err != nil {
+					return nil, err
+				}
 				_, err = bufCmdsRes.Write(byteCmdRes)
 				if err != nil {
 					return nil, err
@@ -96,11 +99,17 @@ func (c *Connection) ReadMessage() ([]byte, error) {
 			// commands
 			if !cmd.IsNeedOption(mainCmd) {
 				byteCmdRes, err = c.BuildCmdRes(*c, mainCmd, 0)
+				if err != nil {
+					return nil, err
+				}
 				_, err = bufCmdsRes.Write(byteCmdRes)
 			} else {
 				i++
 				subCmd = byteMessage[i]
 				byteCmdRes, err = c.BuildCmdRes(*c, mainCmd, subCmd)
+				if err != nil {
+					return nil, err
+				}
 				_, err = bufCmdsRes.Write(byteCmdRes)
 			}
 			if err != nil {
@@ -117,7 +126,10 @@ func (c *Connection) ReadMessage() ([]byte, error) {
 			return nil, err
 		}
 	}
-	c.WriteBytes(bufCmdsRes.Bytes())
+	err = c.WriteBytes(bufCmdsRes.Bytes())
+	if err != nil {
+		return nil, err
+	}
 	return bufMessage.Bytes(), err
 }
 

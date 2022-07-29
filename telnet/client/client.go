@@ -58,13 +58,14 @@ func (c *Client) Call() {
 	}
 }
 
-func (c *Client) ScanAndWrite() error {
+func (c *Client) ScanAndWrite() {
 	ttyReader := bufio.NewReader(c.Terminal.StdFile)
 	c.InputLength = 0
 	for {
 		r, _, err := ttyReader.ReadRune()
 		if err != nil {
-			return err
+			c.ErrChan <- err
+			return
 		}
 		if !c.EnableOptions[opt.ECHO] {
 			switch r {
@@ -83,7 +84,8 @@ func (c *Client) ScanAndWrite() error {
 		}
 		err = c.WriteByte(byte(r))
 		if err != nil {
-			return err
+			c.ErrChan <- err
+			return
 		}
 	}
 }
