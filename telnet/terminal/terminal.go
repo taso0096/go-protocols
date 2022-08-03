@@ -13,10 +13,11 @@ import (
 )
 
 type Terminal struct {
-	StdFile *os.File
-	Termios unix.Termios
-	Type    string
-	EnvChan chan []string
+	StdFile       *os.File
+	Termios       unix.Termios
+	backupTermios unix.Termios
+	Type          string
+	EnvChan       chan []string
 	// Window Size
 	width  uint16
 	height uint16
@@ -43,6 +44,7 @@ func (t *Terminal) OpenTty() error {
 	t.StdFile = ttyStdin // Stdin
 	t.reader = bufio.NewReader(t.StdFile)
 	termios.Tcgetattr(t.StdFile.Fd(), &t.Termios)
+	t.backupTermios = t.Termios
 	t.setRawMode()
 	return nil
 }
@@ -142,6 +144,7 @@ func (t *Terminal) setspeed() {
 
 func (t *Terminal) Close() error {
 	if t.StdFile != nil {
+		termios.Tcsetattr(t.StdFile.Fd(), termios.TCSANOW, &t.backupTermios)
 		return t.StdFile.Close()
 	}
 	return nil
