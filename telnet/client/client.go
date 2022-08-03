@@ -176,6 +176,7 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 				_, err = bufCmdsRes.Write(bufOptionRes.Bytes())
 			}
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SE})
+			nextStatus = true
 		}
 
 		_, ok := c.EnableOptions[subCmd]
@@ -205,7 +206,6 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 		}
 		if !c.EnableOptions[subCmd] {
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.WILL, subCmd})
-			nextStatus = true
 		}
 		switch subCmd {
 		case opt.NEGOTIATE_ABOUT_WINDOW_SIZE:
@@ -215,13 +215,14 @@ func BuildCmdRes(c connection.Connection, mainCmd byte, subCmd byte, options ...
 			binary.Write(bufCmdsRes, binary.BigEndian, int16(height))
 			_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.SE})
 		}
+		nextStatus = true
 	case cmd.DONT:
 		_, err = bufCmdsRes.Write([]byte{cmd.IAC, cmd.DONT, subCmd})
 		nextStatus = false
 	}
 
 	status, ok := c.EnableOptions[subCmd]
-	if ok && status == nextStatus && subCmd != opt.ECHO {
+	if ok && status == nextStatus && (subCmd != opt.ECHO && subCmd != opt.NEGOTIATE_ABOUT_WINDOW_SIZE) {
 		return nil, err
 	}
 	c.EnableOptions[subCmd] = nextStatus
